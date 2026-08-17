@@ -32,16 +32,20 @@ videolyrics.org {
     handle {
         root * /home/carlos/videolyrics/dist
 
-        # Fonts are self-hosted and the app talks to exactly two origins: this
-        # one, for /api, and Supabase, for sign-in. blob: is required because
-        # the finished MP4 is handed to the page as a blob URL, and worker-src
-        # blob: because the media toolkit spawns workers to encode.
+        # Fonts are self-hosted. The page reaches exactly three places: here
+        # for /api, Supabase for sign-in, and Google Analytics. blob: is
+        # required because the finished MP4 is handed to the page as a blob
+        # URL, and worker-src blob: because the media toolkit spawns workers.
+        #
+        # Note there is no 'unsafe-inline' in script-src: the GA snippet's
+        # configuration lives in the bundle rather than an inline block, so
+        # this page keeps a policy that would actually stop an injection.
         #
         # If you move off *.supabase.co, this connect-src is the thing that
         # will silently break sign-in — the symptom is a network error with no
         # message, because a CSP block is invisible to fetch().
         header {
-            Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: https://*.supabase.co; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+            Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob: https://www.googletagmanager.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://*.google-analytics.com https://*.googletagmanager.com; media-src 'self' blob:; connect-src 'self' blob: https://*.supabase.co https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
             Referrer-Policy "strict-origin-when-cross-origin"
             X-Content-Type-Options "nosniff"
             Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"

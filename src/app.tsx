@@ -22,6 +22,8 @@ import {
   type AuthUser,
 } from './lib/auth';
 import { loadReference, mergeColours, releaseReference, type Reference } from './lib/images';
+// `track` is taken by the AudioTrack state below.
+import { track as trackEvent } from './lib/analytics';
 import type { Scene } from './render/engine';
 
 import { CardHead, formatBytes, formatTime, Notice, Spinner } from './ui/bits';
@@ -210,8 +212,17 @@ export function App() {
     // Decode straight away: it takes a second or two and the result is needed
     // for both the reactivity table and the export.
     void decodeAudioFile(next)
-      .then(setAudioBuffer)
-      .catch(() => setError('That file could not be decoded as audio. MP3, M4A, WAV and FLAC all work.'));
+      .then((buffer) => {
+        setAudioBuffer(buffer);
+        // Duration rounded to the nearest 30s. Enough to see whether people
+        // bring three-minute songs or twelve-minute ones; not enough to
+        // identify a track.
+        trackEvent('song_selected', { duration_bucket: Math.round(buffer.duration / 30) * 30 });
+      })
+      .catch(() => {
+        setError('That file could not be decoded as audio. MP3, M4A, WAV and FLAC all work.');
+        trackEvent('generate_failed', { stage: 'decode' });
+      });
   };
 
   const addReferences = async (files: File[]) => {
@@ -245,6 +256,8 @@ export function App() {
     setError(null);
     setScreen('working');
     setUploadFraction(0);
+    const startedAt = performance.now();
+    trackEvent('generate_started', { signed_in: Boolean(authUser), pictures: references.length });
 
     try {
       const created = await api.createJob(lyrics, currentPrefs());
@@ -268,6 +281,15 @@ export function App() {
       setPlan(finished.plan);
       setDirector(finished.director ?? null);
       setScreen('studio');
+
+      trackEvent('video_ready', {
+        seconds: Math.round((performance.now() - startedAt) / 1000),
+        template: finished.plan.template,
+        // How well the words matched the vocal is the single best predictor
+        // of whether somebody will bother exporting.
+        alignment: finished.alignment.quality.verdict,
+        sections: finished.alignment.segments.length,
+      });
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') {
         setScreen('setup');
@@ -275,6 +297,7 @@ export function App() {
       }
       setError((e as Error).message);
       setScreen('setup');
+      trackEvent('generate_failed', { stage: 'align' });
     }
   };
 
@@ -302,6 +325,7 @@ export function App() {
         ? { ...result.plan, aspect: existing.aspect, resolution: existing.resolution, fps: existing.fps }
         : result.plan));
       setDirector(result.director);
+      trackEvent('redesigned', { template: result.plan.template });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -322,6 +346,7 @@ export function App() {
     previewRef.current?.pause();
     if (config?.auth?.enabled && !authUser) {
       setSignInFor('Sign in to download your video');
+      trackEvent('signin_prompted', { from: 'export' });
       return;
     }
     setExporting(true);

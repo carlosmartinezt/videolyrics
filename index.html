@@ -8,6 +8,13 @@
     <meta name="color-scheme" content="dark" />
     <link rel="stylesheet" href="/fonts/fonts.css" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+
+    <!--
+      Google Analytics. Only the loader is here; the configuration is in
+      src/lib/analytics.ts so that script-src does not need 'unsafe-inline'
+      on a page that handles uploads and sign-in tokens.
+    -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-R2T77DXX6B"></script>
   </head>
   <body>
     <div id="root"></div>

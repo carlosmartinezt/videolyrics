@@ -15,6 +15,7 @@ import {
   type EncodeProgress, type EncodeResult,
 } from '../encode/output';
 import { formatBytes, formatDuration, Notice, Spinner } from './bits';
+import { track } from '../lib/analytics';
 
 interface Props {
   scene: Scene;
@@ -82,6 +83,10 @@ export function ExportDialog({
     const controller = new AbortController();
     abortRef.current = controller;
     const started = performance.now();
+    track('export_started', {
+      resolution: plan.resolution, aspect: plan.aspect, fps: plan.fps,
+      template: plan.template, frames: totalFrames,
+    });
 
     setPhase({
       kind: 'encoding',
@@ -103,7 +108,16 @@ export function ExportDialog({
       });
       const url = URL.createObjectURL(result.blob);
       urlRef.current = url;
-      setPhase({ kind: 'done', result, url, seconds: (performance.now() - started) / 1000 });
+      const seconds = (performance.now() - started) / 1000;
+      setPhase({ kind: 'done', result, url, seconds });
+      track('export_finished', {
+        seconds: Math.round(seconds),
+        megabytes: Math.round(result.blob.size / 1048576),
+        resolution: plan.resolution,
+        // Which audio path was taken tells us how often the copy shortcut
+        // works in the wild versus falling back to re-encoding.
+        audio: result.audio.method,
+      });
     } catch (error) {
       if ((error as Error)?.name === 'AbortError') {
         setPhase({ kind: 'idle' });
@@ -113,6 +127,7 @@ export function ExportDialog({
         kind: 'failed',
         message: (error as Error)?.message || 'The encoder stopped unexpectedly.',
       });
+      track('export_failed', { resolution: plan.resolution, aspect: plan.aspect });
     }
   };
 
