@@ -11,10 +11,26 @@
 # exported frame. www and the old subdomain redirect to it, so there is one
 # origin — which also means one place for a browser session to live and one
 # entry in Supabase's redirect allow-list.
+#
+# The two videolyrics.org hosts use an explicit Cloudflare Origin CA
+# certificate; videolyrics.carlosmartinezt.com still uses automatic Let's
+# Encrypt. That asymmetry is deliberate, not drift. Cloudflare's edge answers
+# every http:// request on the videolyrics.org zone with a 301 before it
+# reaches this server — including /.well-known/acme-challenge/ — so HTTP-01
+# validation can never complete, and TLS-ALPN-01 cannot either, because
+# Cloudflare terminates TLS at the edge. Automatic certificates are therefore
+# impossible for that zone while it is proxied, and the symptom is a
+# Cloudflare 525 that looks like a server fault but is not one.
+#
+# Install the certificate with:  sudo ops/install-origin-cert.sh <cert> <key>
+# Removing the proxy from that zone would make this stop being the right
+# answer; see the header of that script.
 
 # >>> videolyrics (managed by ops/install-caddy-site.sh) >>>
 
 videolyrics.org {
+    tls /etc/caddy/origin-certs/videolyrics.crt /etc/caddy/origin-certs/videolyrics.key
+
     encode gzip zstd
 
     handle /api/* {
@@ -64,6 +80,8 @@ videolyrics.org {
 }
 
 www.videolyrics.org {
+    tls /etc/caddy/origin-certs/videolyrics.crt /etc/caddy/origin-certs/videolyrics.key
+
     redir https://videolyrics.org{uri} permanent
 }
 
