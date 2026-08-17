@@ -10,7 +10,7 @@ browser encode the MP4.
 Anyone can upload a song and watch the result. Downloading it needs a free
 account, and costs one of five monthly credits.
 
-Live at **https://videolyrics.carlosmartinezt.com**
+Live at **https://videolyrics.org**
 
 ---
 
@@ -102,8 +102,13 @@ and signed-in jobs jump the queue ahead of anonymous ones.
    complete list — see above for why there is no secret key.
 4. Supabase → Authentication → URL Configuration: set the site URL and add
    the deployment as a redirect URL.
-5. For Google: configure the provider in Supabase Auth, then `AUTH_GOOGLE=1`.
-   Magic link works without it.
+5. For Google: add `https://<ref>.supabase.co/auth/v1/callback` as an
+   authorised redirect URI in Google Cloud, then paste the client id and
+   secret into Supabase → Authentication → Providers → Google. Nothing to
+   change here — the button appears on its own, because which providers are
+   offered is read from Supabase's `/auth/v1/settings` rather than declared
+   in our config. A flag would have to be flipped at the same moment as the
+   dashboard, and getting that wrong shows a button that dead-ends.
 6. Check it: `SUPABASE_URL=… SUPABASE_PUBLISHABLE_KEY=… node
    scripts/verify-supabase.mjs <email> <password>` — needs a password user,
    which `scripts/create-test-user.mjs` can make.
@@ -254,11 +259,26 @@ Dev-server only; `vite build` never sees `lab.html`.
 Builds `dist/` (which Caddy serves directly, so the build *is* the deploy),
 warms the models, and restarts the systemd **user** unit — no sudo anywhere.
 
-Two things need a human, once:
+### Hostnames
 
-1. **Cloudflare** — an A record `videolyrics` → `5.161.231.48`, proxied.
-   There is no `*.carlosmartinezt.com` wildcard.
-2. **Caddy** — `sudo sh -c 'cat deploy/Caddyfile.snippet >> /etc/caddy/Caddyfile' && sudo systemctl reload caddy`
+`videolyrics.org` is canonical, because that is what is burned into every
+exported frame. `www.videolyrics.org` and the original
+`videolyrics.carlosmartinezt.com` both redirect to it, so there is one origin
+— which also means one place for a browser session to live and one entry in
+Supabase's redirect allow-list.
+
+Changing the Caddy configuration is the one step that needs root:
+
+```sh
+sudo ops/install-caddy-site.sh --dry     # show the diff, change nothing
+sudo ops/install-caddy-site.sh           # apply
+```
+
+It replaces only the region between its sentinel comments, refuses to write
+anything `caddy validate` rejects, keeps a timestamped backup, and rolls back
+if the reload fails. That care is warranted: `/etc/caddy/Caddyfile` serves ten
+sites and a stray brace takes all of them down at once. Running it twice is a
+no-op.
 
 ## Limits and what they cost
 

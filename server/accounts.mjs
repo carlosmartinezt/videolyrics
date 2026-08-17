@@ -41,9 +41,14 @@ export function authConfig(env = process.env) {
     anonKey,
     stub,
     enabled: Boolean(url && anonKey) || stub,
-    // Google needs an OAuth client configured in Supabase; hide the button
-    // until it is, rather than offering a route that dead-ends.
-    google: env.AUTH_GOOGLE === '1',
+    // Whether Google is offered is discovered from Supabase itself (see
+    // `enabledProviders`), not declared here — a flag would have to be flipped
+    // by hand at exactly the same moment as the dashboard, and the failure
+    // mode is a button that dead-ends. Setting AUTH_GOOGLE forces the answer
+    // if the discovery ever needs overriding.
+    googleOverride: env.AUTH_GOOGLE === undefined || env.AUTH_GOOGLE === ''
+      ? null
+      : env.AUTH_GOOGLE === '1',
     freeCredits: Number(env.FREE_CREDITS_PER_MONTH || 5),
   };
 }
@@ -103,6 +108,49 @@ export async function userFromToken(token, config = authConfig()) {
   } catch {
     return null;
   }
+}
+
+/* ------------------------------- providers -------------------------------- */
+
+/**
+ * Which sign-in methods Supabase actually has configured.
+ *
+ * Asked of Supabase rather than declared in our own config, so enabling Google
+ * in the dashboard is the *only* step — the button appears on its own, and can
+ * never be shown for a provider that would dead-end. Cached, because it
+ * changes about once a year and this is on the page-load path.
+ */
+let providerCache = { at: 0, value: null };
+const PROVIDER_TTL_MS = 5 * 60_000;
+
+export async function enabledProviders(config = authConfig()) {
+  if (!config.enabled || config.stub) {
+    return { email: true, google: config.googleOverride === true };
+  }
+  if (providerCache.value && Date.now() - providerCache.at < PROVIDER_TTL_MS) {
+    return providerCache.value;
+  }
+
+  let value = { email: true, google: false };
+  try {
+    const response = await fetch(`${config.url}/auth/v1/settings`, {
+      headers: { apikey: config.anonKey },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (response.ok) {
+      const settings = await response.json();
+      value = {
+        email: settings?.external?.email !== false,
+        google: settings?.external?.google === true,
+      };
+    }
+  } catch {
+    // Leave the conservative default: offer email, hide Google.
+  }
+
+  if (config.googleOverride !== null) value.google = config.googleOverride;
+  providerCache = { at: Date.now(), value };
+  return value;
 }
 
 /* ------------------------------ the ledger -------------------------------- */

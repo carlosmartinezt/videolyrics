@@ -83,8 +83,17 @@ for attempt in $(seq 1 20); do
   sleep 0.5
 done
 
-SITE="${SITE_URL:-https://videolyrics.carlosmartinezt.com}"
-if curl -fsS --max-time 5 -o /dev/null -w '%{http_code}' "$SITE/api/health" 2>/dev/null | grep -q 200; then
+# The canonical host first; the original one is kept as a redirect and is
+# still worth checking while DNS for the new domain settles.
+SITE=""
+for candidate in "${SITE_URL:-https://videolyrics.org}" https://videolyrics.carlosmartinezt.com; do
+  if curl -fsS --max-time 6 -o /dev/null -w '%{http_code}' "$candidate/api/health" 2>/dev/null | grep -q 200; then
+    SITE="$candidate"
+    break
+  fi
+done
+
+if [[ -n "$SITE" ]]; then
   green "$SITE is live"
 
   # The Caddyfile is edited by hand with sudo, so it drifts from the snippet
@@ -98,8 +107,7 @@ if curl -fsS --max-time 5 -o /dev/null -w '%{http_code}' "$SITE/api/health" 2>/d
     printf '    && sudo systemctl reload caddy\n'
   fi
 else
-  printf '\n\033[33mNot reachable from outside yet.\033[0m Two things still need a human:\n'
-  printf '  1. Cloudflare: add an A record  videolyrics -> 5.161.231.48  (proxied)\n'
-  printf '  2. Caddy:      sudo sh -c "cat %s/deploy/Caddyfile.snippet >> /etc/caddy/Caddyfile" \\\n' "$ROOT"
-  printf '                 && sudo systemctl reload caddy\n'
+  printf '\n\033[33mNot reachable from outside.\033[0m Two things need a human:\n'
+  printf '  1. Cloudflare: an A record for videolyrics.org -> 5.161.231.48\n'
+  printf '  2. Caddy:      sudo %s/ops/install-caddy-site.sh\n' "$ROOT"
 fi

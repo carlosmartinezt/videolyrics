@@ -1,13 +1,20 @@
-# Caddy site block for videolyrics.carlosmartinezt.com
+# Caddy configuration for videolyrics.
 #
-# Append to /etc/caddy/Caddyfile, then: sudo systemctl reload caddy
+# Install with:  sudo ops/install-caddy-site.sh
 #
-# Same pattern as journal and njtransit: Caddy serves the built SPA straight
-# out of the repo's dist/, so `npm run build` *is* the deploy. /api proxies to
-# the Node service (videolyrics-api.service), which owns the uploaded audio
-# and runs the aligner.
+# That script replaces the managed region in /etc/caddy/Caddyfile, validates
+# the result *before* touching the live file, and keeps a timestamped backup.
+# Editing by hand is possible but this file serves six sites, and a stray
+# brace takes all of them down at once.
+#
+# videolyrics.org is canonical because that is what is burned into every
+# exported frame. www and the old subdomain redirect to it, so there is one
+# origin — which also means one place for a browser session to live and one
+# entry in Supabase's redirect allow-list.
 
-videolyrics.carlosmartinezt.com {
+# >>> videolyrics (managed by ops/install-caddy-site.sh) >>>
+
+videolyrics.org {
     encode gzip zstd
 
     handle /api/* {
@@ -51,3 +58,15 @@ videolyrics.carlosmartinezt.com {
         file_server
     }
 }
+
+www.videolyrics.org {
+    redir https://videolyrics.org{uri} permanent
+}
+
+# The original address. Kept alive as a redirect rather than deleted, because
+# it is in a git history, a systemd unit comment and at least one screenshot.
+videolyrics.carlosmartinezt.com {
+    redir https://videolyrics.org{uri} permanent
+}
+
+# <<< videolyrics <<<

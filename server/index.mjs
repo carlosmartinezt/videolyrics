@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 
 import * as store from './jobs.mjs';
 import {
-  accountState, authConfig, consumeCredit, isUnlocked, userFromToken,
+  accountState, authConfig, consumeCredit, enabledProviders, isUnlocked, userFromToken,
 } from './accounts.mjs';
 import { directorConfig, watermarkConfig } from './director/index.mjs';
 import { TEMPLATES, FONTS, ASPECTS } from '../shared/templates.mjs';
@@ -58,12 +58,13 @@ const server = http.createServer(async (req, res) => {
     if (parts[1] === 'config' && req.method === 'GET') {
       const config = directorConfig();
       const auth = authConfig();
+      const providers = await enabledProviders(auth);
       return json(res, 200, {
         auth: {
           enabled: auth.enabled,
           url: auth.url || null,
           anonKey: auth.anonKey || null,
-          google: auth.google,
+          google: providers.google,
           freeCredits: auth.freeCredits,
           devStub: auth.stub,
         },
