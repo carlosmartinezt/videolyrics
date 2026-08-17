@@ -75,8 +75,10 @@ export async function createJob({ lyrics, prefs, ip, user = null }) {
     id,
     token,
     ip,
-    // Null for anonymous visitors, who may align and preview but not export.
-    user,
+    // Identity only. The access token deliberately does not come along: it
+    // expires in an hour, a job lives six, and every call that needs one
+    // re-reads it from the request that is asking.
+    user: user ? { id: user.id, email: user.email } : null,
     songHash: null,
     unlocked: false,
     state: 'created',

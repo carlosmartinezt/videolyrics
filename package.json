@@ -18,7 +18,9 @@
     "test:py": "aligner/.venv/bin/python -m unittest discover -s aligner -p \"test_*.py\"",
     "e2e": "node scripts/e2e.mjs",
     "lab": "node scripts/contact-sheet.mjs",
-    "deploy": "./ops/deploy.sh"
+    "deploy": "./ops/deploy.sh",
+    "migrate": "node scripts/run-migrations.mjs",
+    "verify:supabase": "node scripts/verify-supabase.mjs"
   },
   "dependencies": {
     "@supabase/auth-js": "^2.112.3",
@@ -31,6 +33,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "concurrently": "^10.0.5",
+    "pg": "^8.23.0",
     "playwright-core": "^1.62.1",
     "typescript": "^7.0.2",
     "vite": "^8.2.1"

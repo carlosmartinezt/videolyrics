@@ -59,11 +59,21 @@ resolution, restyling, or coming back tomorrow with the same file is free.
 Fixing a typo in the lyrics and re-aligning is free too — the hash covers the
 audio only, deliberately.
 
-**The browser never writes account state.** It holds a Supabase session and
-sends the access token; the balance and the unlock are written by
-`consume_credit()`, a security-definer function granted to the service role
-alone. The profiles and unlocks tables have `select` policies and no others —
-there is no path from a browser session to a write, whatever it sends.
+**This server holds no privileged database credential.** The obvious design
+takes a user id and calls the database as an admin, which means one leaked key
+can touch anyone's account. Instead every function reads `auth.uid()` out of
+the caller's own JWT and is granted to `authenticated`, and the server simply
+forwards the signed-in person's access token. There is no service-role key to
+leak. The worst a hostile caller can do by hitting `consume_credit` directly is
+spend their own credit on their own account.
+
+**The browser cannot write account state.** `profiles` and `unlocks` have
+`select` policies and no others; the only writes are inside security-definer
+functions that confine themselves to `auth.uid()`. Verified against the live
+project, not just asserted: `npm run verify:supabase` checks that an anonymous
+caller gets 401 on both functions, that listing profiles returns nothing, and
+that a signed-in session PATCHing its own `credits_remaining` to 9999 changes
+no rows.
 
 Two credentials travel to the API and they must not share a header:
 
@@ -80,14 +90,27 @@ and signed-in jobs jump the queue ahead of anonymous ones.
 ### Setting it up
 
 1. Create a **new** Supabase project (not the journal one).
-2. Run `supabase/migrations/0001_accounts_and_credits.sql` in the SQL editor.
-3. Put `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`
-   into `.env` (see `.env.example`). The service-role key bypasses every
-   policy — it belongs on the server and nowhere else.
+2. Apply the schema. The database password is needed for this and nothing
+   else, so it never goes in `.env`:
+
+   ```sh
+   DATABASE_URL="postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres" \
+     PGSSLROOTCERT=scripts/.supabase-ca.pem npm run migrate
+   ```
+
+3. Put `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` into `.env`. That is the
+   complete list — see above for why there is no secret key.
 4. Supabase → Authentication → URL Configuration: set the site URL and add
    the deployment as a redirect URL.
 5. For Google: configure the provider in Supabase Auth, then `AUTH_GOOGLE=1`.
    Magic link works without it.
+6. Check it: `SUPABASE_URL=… SUPABASE_PUBLISHABLE_KEY=… node
+   scripts/verify-supabase.mjs <email> <password>` — needs a password user,
+   which `scripts/create-test-user.mjs` can make.
+
+The Caddy `connect-src` must allow `https://*.supabase.co` or sign-in fails
+with a bare network error and no message, because a CSP block is invisible to
+`fetch()`. `ops/deploy.sh` checks the live header for this drift.
 
 Raising someone's allowance later is one statement:
 

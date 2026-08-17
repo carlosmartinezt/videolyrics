@@ -2,14 +2,19 @@
  * Accounts and credits.
  *
  * Supabase owns identity; this module owns everything we decide *because* of
- * identity. Two rules shape it:
+ * identity. Three rules shape it:
  *
- *   1. The browser never writes account state. It holds a Supabase session and
- *      sends the access token; every mutation goes through consume_credit(),
- *      which is granted to the service role alone. A tampered client can lie
- *      about who it is only as far as forging a JWT, which it cannot.
+ *   1. This server holds no privileged database credential. Every call is made
+ *      with the signed-in person's *own* access token, and the SQL functions
+ *      read auth.uid() out of it rather than taking a user id as an argument.
+ *      There is deliberately no service-role key here to leak, and no key that
+ *      could touch somebody else's account if there were.
  *
- *   2. A credit buys a *song*, not a download — keyed by the sha256 of the
+ *   2. The browser never writes account state directly. profiles and unlocks
+ *      have select policies and no others; the only writes are inside
+ *      security-definer functions that confine themselves to auth.uid().
+ *
+ *   3. A credit buys a *song*, not a download — keyed by the sha256 of the
  *      uploaded audio. Re-export at another resolution, restyle it, come back
  *      tomorrow: still free. Only a genuinely new song costs.
  *
@@ -23,8 +28,9 @@ import crypto from 'node:crypto';
 
 export function authConfig(env = process.env) {
   const url = (env.SUPABASE_URL || '').replace(/\/+$/, '');
-  const anonKey = env.SUPABASE_ANON_KEY || '';
-  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || '';
+  // Supabase's newer key format calls this "publishable"; it is the same
+  // thing the JS client calls the anon key, and it is safe in a browser.
+  const anonKey = env.SUPABASE_ANON_KEY || env.SUPABASE_PUBLISHABLE_KEY || '';
 
   // The stub must be impossible to switch on by accident in production: it
   // needs an explicit flag *and* a non-production NODE_ENV.
@@ -33,9 +39,8 @@ export function authConfig(env = process.env) {
   return {
     url,
     anonKey,
-    serviceKey,
     stub,
-    enabled: Boolean(url && anonKey && serviceKey) || stub,
+    enabled: Boolean(url && anonKey) || stub,
     // Google needs an OAuth client configured in Supabase; hide the button
     // until it is, rather than offering a route that dead-ends.
     google: env.AUTH_GOOGLE === '1',
@@ -90,7 +95,9 @@ export async function userFromToken(token, config = authConfig()) {
     if (!response.ok) return null;
     const payload = await response.json();
     if (!payload?.id) return null;
-    const user = { id: payload.id, email: payload.email || null };
+    // The token travels with the user because every subsequent call is made
+    // as them. Nothing here can act on an account without one.
+    const user = { id: payload.id, email: payload.email || null, token };
     cachePut(token, user);
     return user;
   } catch {
@@ -100,13 +107,14 @@ export async function userFromToken(token, config = authConfig()) {
 
 /* ------------------------------ the ledger -------------------------------- */
 
-async function rpc(name, body, config) {
+/** Call a database function as the signed-in person, never as an admin. */
+async function rpc(name, body, user, config) {
   const response = await fetch(`${config.url}/rest/v1/rpc/${name}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      apikey: config.serviceKey,
-      authorization: `Bearer ${config.serviceKey}`,
+      apikey: config.anonKey,
+      authorization: `Bearer ${user.token}`,
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(10_000),
@@ -121,15 +129,15 @@ async function rpc(name, body, config) {
 export async function accountState(user, config = authConfig()) {
   if (!user) return null;
   if (config.stub) return stubAccountState(user, config);
-  return rpc('account_state', { p_user_id: user.id }, config);
+  return rpc('account_state', {}, user, config);
 }
 
 export async function consumeCredit(user, songHash, title, config = authConfig()) {
   if (!user) return { ok: false, reason: 'not_signed_in' };
   if (config.stub) return stubConsume(user, songHash, title, config);
   return rpc('consume_credit', {
-    p_user_id: user.id, p_song_hash: songHash, p_title: title || null,
-  }, config);
+    p_song_hash: songHash, p_title: title || null,
+  }, user, config);
 }
 
 /** Has this person already unlocked this song? Cheap, and never spends. */
@@ -137,14 +145,16 @@ export async function isUnlocked(user, songHash, config = authConfig()) {
   if (!user || !songHash) return false;
   if (config.stub) return stubUnlocks(user.id).has(songHash);
 
+  // The row-level policy already confines this to the caller; the user_id
+  // filter is here so the query uses the index rather than scanning.
   const url = `${config.url}/rest/v1/unlocks`
     + `?user_id=eq.${encodeURIComponent(user.id)}`
     + `&song_hash=eq.${encodeURIComponent(songHash)}&select=id&limit=1`;
   try {
     const response = await fetch(url, {
       headers: {
-        apikey: config.serviceKey,
-        authorization: `Bearer ${config.serviceKey}`,
+        apikey: config.anonKey,
+        authorization: `Bearer ${user.token}`,
       },
       signal: AbortSignal.timeout(8000),
     });
@@ -193,7 +203,7 @@ function stubUserFromToken(token) {
   if (!match) return null;
   const email = match[1].toLowerCase();
   const id = crypto.createHash('sha1').update(email).digest('hex').slice(0, 32);
-  return { id, email };
+  return { id, email, token: String(token) };
 }
 
 function stubUnlocks(userId) {
