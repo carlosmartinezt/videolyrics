@@ -83,8 +83,20 @@ for attempt in $(seq 1 20); do
   sleep 0.5
 done
 
-if curl -fsS --max-time 5 -o /dev/null -w '%{http_code}' https://videolyrics.carlosmartinezt.com/api/health 2>/dev/null | grep -q 200; then
-  green "https://videolyrics.carlosmartinezt.com is live"
+SITE="${SITE_URL:-https://videolyrics.carlosmartinezt.com}"
+if curl -fsS --max-time 5 -o /dev/null -w '%{http_code}' "$SITE/api/health" 2>/dev/null | grep -q 200; then
+  green "$SITE is live"
+
+  # The Caddyfile is edited by hand with sudo, so it drifts from the snippet
+  # in this repo. The failure mode that matters is a CSP that blocks Supabase:
+  # fetch() reports a bare network error and sign-in dies with no clue why.
+  LIVE_CSP=$(curl -fsSI --max-time 5 "$SITE/" 2>/dev/null | grep -i '^content-security-policy' || true)
+  if grep -q '^SUPABASE_URL=.\+' .env 2>/dev/null && ! grep -q 'supabase' <<<"$LIVE_CSP"; then
+    printf '\n\033[33mCSP drift.\033[0m Supabase is configured but the live CSP does not allow it,\n'
+    printf 'so sign-in will fail with an unexplained network error. Fix with:\n\n'
+    printf "  sudo sed -i \"s|connect-src 'self' blob:;|connect-src 'self' blob: https://*.supabase.co;|\" /etc/caddy/Caddyfile \\\n"
+    printf '    && sudo systemctl reload caddy\n'
+  fi
 else
   printf '\n\033[33mNot reachable from outside yet.\033[0m Two things still need a human:\n'
   printf '  1. Cloudflare: add an A record  videolyrics -> 5.161.231.48  (proxied)\n'

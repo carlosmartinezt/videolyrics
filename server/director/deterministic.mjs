@@ -310,7 +310,7 @@ export function buildCues({ segments, mood, audio }) {
 
 /* ------------------------------ the whole ------------------------------- */
 
-export function directDeterministic({ alignment, lyricsText, prefs = {} }) {
+export function directDeterministic({ alignment, lyricsText, prefs = {}, watermark = null }) {
   const audio = alignment.audio || {};
   const segments = alignment.segments || [];
   const lines = alignment.lines || [];
@@ -401,7 +401,9 @@ export function directDeterministic({ alignment, lyricsText, prefs = {} }) {
     source: 'deterministic',
   };
 
-  const { plan } = normalisePlan(draft, { base, segments });
+  if (watermark) draft.watermark = { ...base.watermark, ...watermark };
+
+  const { plan } = normalisePlan(draft, { base: draft, segments });
   return { plan, mood };
 }
 

@@ -21,6 +21,7 @@ import {
 import {
   clamp, easeOutExpo, frameGeometry, hash01, lerp, rgba, shiftHue, smoothstep, type Frame,
 } from './util';
+import { paintWatermark } from './watermark';
 
 export interface Scene {
   plan: Plan;
@@ -450,9 +451,19 @@ export class Renderer {
     // Fade to black over the last beat or so, so the file ends rather than
     // stops. Cheap, and the difference between "a video" and "a screen capture".
     const remaining = alignment.duration - t;
-    if (remaining < FADE_OUT_SECONDS) {
-      ctx.fillStyle = `rgba(0,0,0,${(1 - smoothstep(0, FADE_OUT_SECONDS, remaining)).toFixed(3)})`;
+    const fade = remaining < FADE_OUT_SECONDS
+      ? smoothstep(0, FADE_OUT_SECONDS, remaining)
+      : 1;
+    if (fade < 1) {
+      ctx.fillStyle = `rgba(0,0,0,${(1 - fade).toFixed(3)})`;
       ctx.fillRect(0, 0, frame.width, frame.height);
+    }
+
+    // Last of everything, so grain does not sit on top of it and the closing
+    // frames still carry the mark. It dims with the fade rather than hanging
+    // over black.
+    if (plan.watermark) {
+      paintWatermark(ctx, frame, plan, plan.watermark, fade);
     }
   }
 }

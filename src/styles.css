@@ -770,3 +770,41 @@ footer.site {
 
 footer.site a { color: var(--text-2); text-decoration: none; border-bottom: 1px solid var(--line); }
 footer.site a:hover { color: var(--text); border-color: var(--accent); }
+
+/* -------------------------------- account --------------------------------- */
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+/* The credit counter is the one number people will look for, so it gets the
+   monospace treatment everything else numeric here gets — it belongs to the
+   same family as timecodes and BPM, not to the prose. */
+.credits {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--ink-raise);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.credits b {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.credits[data-empty="true"] b { color: var(--warn); }
+
+@media (max-width: 620px) {
+  .credits span { display: none; }
+}

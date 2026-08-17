@@ -7,6 +7,9 @@ alignment — a CTC acoustic model constrained to the lyrics you pasted — then
 designs the video from what it heard and what the words say, and lets your
 browser encode the MP4.
 
+Anyone can upload a song and watch the result. Downloading it needs a free
+account, and costs one of five monthly credits.
+
 Live at **https://videolyrics.carlosmartinezt.com**
 
 ---
@@ -45,13 +48,80 @@ decoder but no AAC *encoder*, so re-encoding would have failed for a large
 share of users. Instead the uploaded file's audio stream is muxed into the MP4
 untouched: no encoder dependency, no generation loss, near-instant.
 
+## Accounts and credits
+
+Supabase owns identity. Everything decided *because* of identity lives in
+`server/accounts.mjs` and `supabase/migrations/0001_accounts_and_credits.sql`.
+
+**A credit buys a song, not a download.** It is spent at the first export and
+keyed by the sha256 of the uploaded audio, so re-exporting at another
+resolution, restyling, or coming back tomorrow with the same file is free.
+Fixing a typo in the lyrics and re-aligning is free too — the hash covers the
+audio only, deliberately.
+
+**The browser never writes account state.** It holds a Supabase session and
+sends the access token; the balance and the unlock are written by
+`consume_credit()`, a security-definer function granted to the service role
+alone. The profiles and unlocks tables have `select` policies and no others —
+there is no path from a browser session to a write, whatever it sends.
+
+Two credentials travel to the API and they must not share a header:
+
+| | |
+|---|---|
+| `Authorization: Bearer` | the person's Supabase session — *who you are* |
+| `X-Job-Token` | a capability for one job — *what you may touch* |
+
+Anonymous visitors can align and preview. That is a deliberate choice about
+the funnel and it leaves alignment — the only expensive thing here — reachable
+without an account, so it is capped much harder per IP (3/hour against 20),
+and signed-in jobs jump the queue ahead of anonymous ones.
+
+### Setting it up
+
+1. Create a **new** Supabase project (not the journal one).
+2. Run `supabase/migrations/0001_accounts_and_credits.sql` in the SQL editor.
+3. Put `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`
+   into `.env` (see `.env.example`). The service-role key bypasses every
+   policy — it belongs on the server and nowhere else.
+4. Supabase → Authentication → URL Configuration: set the site URL and add
+   the deployment as a redirect URL.
+5. For Google: configure the provider in Supabase Auth, then `AUTH_GOOGLE=1`.
+   Magic link works without it.
+
+Raising someone's allowance later is one statement:
+
+```sql
+update public.profiles set credits_per_period = 50, credits_remaining = 50
+ where email = 'someone@example.com';
+```
+
+Local development needs none of this. `AUTH_DEV_STUB=1` swaps Supabase for an
+in-memory stub — any email signs in, no mail is sent, and the whole gate,
+counter and monthly roll behave identically. It refuses to arm when `NODE_ENV`
+is production.
+
+## The watermark
+
+Every exported frame carries `videolyrics.org`, bottom right, in the video's
+own accent colour. It is applied in `normalisePlan` from server configuration
+(`WATERMARK_TEXT` and friends) after the director and the language model have
+had their say, so no client preference and no model output can remove it.
+
+Since encoding happens in the visitor's browser, someone who edits the
+JavaScript can strip it. That is inherent to not paying for server-side
+rendering — it is a deterrent, not a lock — and the alternative costs 30-45
+minutes of both cores per song.
+
 ## Layout
 
 ```
 aligner/      Python. ffmpeg → features → forced alignment → structure.
               Runs as a subprocess, one job at a time.
 server/       Node, no dependencies. Job queue, SSE progress, the director.
+  accounts.mjs  Sessions, credits, unlocks — and a dev stub for all three.
   director/   Deterministic art direction, plus an optional model pass.
+supabase/     The schema. Read the SQL comments; the rules live there.
 shared/       Imported by both server and browser: templates, palettes,
               and the plan schema + validator.
 src/          The web app. render/ is the renderer; encode/ is WebCodecs.
@@ -127,14 +197,17 @@ tar xf ff.tar.xz && cp ffmpeg-*/bin/{ffmpeg,ffprobe} ~/bin/
 ### Tests
 
 ```sh
-npm test                                    # plan validation + director
+npm test                                    # plan validation, director, credits
 aligner/.venv/bin/python -m unittest discover -s aligner -p "test_*.py"
 node scripts/e2e.mjs --audio song.mp3 --lyrics words.txt   # real Chrome, real MP4
 ```
 
 The end-to-end script drives a real browser through the whole flow and probes
 the resulting file with ffprobe, because "no exception was thrown" is not the
-same as "this MP4 plays".
+same as "this MP4 plays". With `AUTH_DEV_STUB=1` on the API it also checks
+that an anonymous export is refused, that signing in grants five credits, that
+exporting spends exactly one, and that the watermark is actually burned into
+the decoded frame.
 
 ### Render lab
 
@@ -174,6 +247,8 @@ Two things need a human, once:
 | Retention | Uploads deleted after 6 hours |
 | Export | Needs a Chromium browser. Firefox and Safari can do everything except the final encode. |
 | Reference pictures | Never uploaded. Only the hex colours extracted from them are sent. |
+| Free credits | 5 songs per person per month, resetting on the 1st |
+| Anonymous | May align and preview, 3 songs/hour per IP, cannot download |
 
 The English model (`WAV2VEC2_ASR_BASE_960H`) is picked automatically when the
 lyrics look English, the multilingual one (`MMS_FA`) otherwise; `mms` is twice

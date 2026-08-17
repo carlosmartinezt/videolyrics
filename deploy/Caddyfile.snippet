@@ -25,12 +25,16 @@ videolyrics.carlosmartinezt.com {
     handle {
         root * /home/carlos/videolyrics/dist
 
-        # Everything the page needs is same-origin: fonts are self-hosted and
-        # the only network calls are /api on this host. blob: is required
-        # because the finished MP4 is handed to the page as a blob URL, and
-        # worker-src blob: because the media toolkit spawns workers to encode.
+        # Fonts are self-hosted and the app talks to exactly two origins: this
+        # one, for /api, and Supabase, for sign-in. blob: is required because
+        # the finished MP4 is handed to the page as a blob URL, and worker-src
+        # blob: because the media toolkit spawns workers to encode.
+        #
+        # If you move off *.supabase.co, this connect-src is the thing that
+        # will silently break sign-in — the symptom is a network error with no
+        # message, because a CSP block is invisible to fetch().
         header {
-            Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+            Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: https://*.supabase.co; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
             Referrer-Policy "strict-origin-when-cross-origin"
             X-Content-Type-Options "nosniff"
             Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"

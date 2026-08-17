@@ -9,12 +9,14 @@
  * Nothing here renders video. The browser does that with WebCodecs; this
  * server only listens to the song and designs the video.
  *
+ *   GET    /api/me                   Supabase bearer      -> account + credits
  *   POST   /api/jobs                 {lyrics, prefs}      -> {id, token}
  *   PUT    /api/jobs/:id/audio       raw audio body       -> {bytes}
  *   POST   /api/jobs/:id/start                            -> queued
  *   GET    /api/jobs/:id/events      server-sent events
  *   GET    /api/jobs/:id             ?full=1              -> job (+ result)
  *   POST   /api/jobs/:id/redirect    {prefs}              -> new plan
+ *   POST   /api/jobs/:id/unlock      spends one credit    -> {remaining}
  *   DELETE /api/jobs/:id
  *   GET    /api/config
  *   GET    /api/health
@@ -26,7 +28,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import * as store from './jobs.mjs';
-import { directorConfig } from './director/index.mjs';
+import {
+  accountState, authConfig, consumeCredit, isUnlocked, userFromToken,
+} from './accounts.mjs';
+import { directorConfig, watermarkConfig } from './director/index.mjs';
 import { TEMPLATES, FONTS, ASPECTS } from '../shared/templates.mjs';
 import { PALETTES, MOOD_VOCABULARY } from '../shared/palettes.mjs';
 import { CUE_TREATMENTS } from '../shared/plan.mjs';
@@ -52,7 +57,17 @@ const server = http.createServer(async (req, res) => {
 
     if (parts[1] === 'config' && req.method === 'GET') {
       const config = directorConfig();
+      const auth = authConfig();
       return json(res, 200, {
+        auth: {
+          enabled: auth.enabled,
+          url: auth.url || null,
+          anonKey: auth.anonKey || null,
+          google: auth.google,
+          freeCredits: auth.freeCredits,
+          devStub: auth.stub,
+        },
+        watermark: watermarkConfig(),
         limits: {
           maxAudioBytes: store.LIMITS.maxAudioBytes,
           maxLyricChars: store.LIMITS.maxLyricChars,
@@ -73,14 +88,26 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    /* GET /api/me */
+    if (parts[1] === 'me' && req.method === 'GET') {
+      const user = await userFromToken(bearer(req));
+      if (!user) return json(res, 401, { error: 'Not signed in.' });
+      const state = await accountState(user);
+      return json(res, 200, { user: { id: user.id, email: user.email }, account: state });
+    }
+
     if (parts[1] !== 'jobs') return notFound(res);
 
     /* POST /api/jobs */
     if (parts.length === 2 && req.method === 'POST') {
       const ip = clientIp(req);
-      store.rateLimit(ip);
+      // Anonymous visitors may align and preview; the account only gates the
+      // download. They get a much smaller per-IP allowance, because alignment
+      // is the only expensive thing here and nothing else caps it.
+      const user = await userFromToken(bearer(req));
+      store.rateLimit(ip, Boolean(user));
       const body = await readJson(req);
-      const job = await store.createJob({ lyrics: body.lyrics, prefs: body.prefs, ip });
+      const job = await store.createJob({ lyrics: body.lyrics, prefs: body.prefs, ip, user });
       return json(res, 201, { id: job.id, token: job.token, job: store.publicJob(job) });
     }
 
@@ -88,8 +115,13 @@ const server = http.createServer(async (req, res) => {
     const job = id && store.getJob(id);
     if (!job) return json(res, 404, { error: 'No such job. It may have expired.' });
 
-    const token = bearer(req) || url.searchParams.get('token');
-    if (!store.authorised(job, token)) {
+    // Two independent credentials, and they must not share a header.
+    // `Authorization: Bearer` is the person's Supabase session, which is what
+    // that header conventionally means and what /unlock needs. The job token
+    // is our own capability for one job — it travels in X-Job-Token, or in
+    // the query string for the SSE stream, which cannot set headers.
+    const jobToken = req.headers['x-job-token'] || url.searchParams.get('token');
+    if (!store.authorised(job, jobToken)) {
       return json(res, 403, { error: 'Wrong or missing job token.' });
     }
 
@@ -120,8 +152,52 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, result);
     }
 
+    /* POST /api/jobs/:id/unlock — spend a credit to allow the download */
+    if (parts[3] === 'unlock' && req.method === 'POST') {
+      const auth = authConfig();
+      if (!auth.enabled) {
+        return json(res, 503, { error: 'Accounts are not configured on this server.' });
+      }
+      const user = await userFromToken(bearer(req));
+      if (!user) {
+        return json(res, 401, { error: 'Sign in to download.' });
+      }
+      if (!job.songHash) {
+        return json(res, 409, { error: 'This job has no audio yet.' });
+      }
+
+      const title = job.plan?.title?.title || job.audioName || null;
+      const result = await consumeCredit(user, job.songHash, title);
+
+      if (!result?.ok) {
+        const status = result?.reason === 'no_credits' ? 402 : 400;
+        return json(res, status, {
+          error: result?.reason === 'no_credits'
+            ? 'You have used this month\'s credits.'
+            : 'Could not unlock this song.',
+          reason: result?.reason || 'unknown',
+          remaining: result?.remaining ?? 0,
+          resetsAt: result?.resets_at ?? null,
+        });
+      }
+
+      job.unlocked = true;
+      return json(res, 200, {
+        ok: true,
+        already: Boolean(result.already),
+        remaining: result.remaining,
+        resetsAt: result.resets_at ?? null,
+      });
+    }
+
     /* GET /api/jobs/:id */
     if (parts.length === 3 && req.method === 'GET') {
+      const viewer = await userFromToken(bearer(req));
+      if (viewer && job.songHash && !job.unlocked) {
+        // Somebody who already paid for this song on another day should not
+        // be asked again just because this is a fresh job.
+        job.unlocked = await isUnlocked(viewer, job.songHash);
+      }
       return json(res, 200, store.publicJob(job, { includeResult: url.searchParams.get('full') === '1' }));
     }
 

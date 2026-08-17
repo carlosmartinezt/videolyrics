@@ -17,6 +17,10 @@ import { buildAudioTrack, type AudioTrack } from './audio/track';
 import { decodeAudioFile } from './encode/output';
 import { detectSupport, type Support } from './encode/support';
 import { ensureFont, fontOpticalFor, fontStackFor } from './lib/fonts';
+import {
+  initAuth, onAuthChange, signOut, stubRestore, stubSignOut, tidyCallbackUrl,
+  type AuthUser,
+} from './lib/auth';
 import { loadReference, mergeColours, releaseReference, type Reference } from './lib/images';
 import type { Scene } from './render/engine';
 
@@ -25,6 +29,7 @@ import { CueSheet } from './ui/CueSheet';
 import { ExportDialog } from './ui/ExportDialog';
 import { HeroCanvas } from './ui/HeroCanvas';
 import { Preview, type PreviewHandle } from './ui/Preview';
+import { SignIn } from './ui/SignIn';
 import { StylePanel } from './ui/StylePanel';
 
 /**
@@ -73,6 +78,11 @@ export function App() {
   const [exporting, setExporting] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
 
+  const [account, setAccount] = useState<api.Account | null>(null);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [signInFor, setSignInFor] = useState<string | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
+
   const tokenRef = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const watcherRef = useRef<{ close: () => void } | null>(null);
@@ -94,12 +104,44 @@ export function App() {
         if (cancelled) return;
         setConfig(serverConfig);
         setSupport(capability);
+
+        if (serverConfig.auth?.devStub) {
+          setAuthUser(stubRestore());
+        } else {
+          await initAuth(serverConfig);
+          tidyCallbackUrl();
+        }
       } catch (e) {
         if (!cancelled) setBootError((e as Error).message);
       }
     })();
     return () => { cancelled = true; };
   }, []);
+
+  /* Sessions can start, refresh and end at any moment, including on the
+     round trip back from a magic link. One subscription, one source of truth. */
+  useEffect(() => onAuthChange(setAuthUser), []);
+
+  /* Whoever is signed in, ask the server what they have. The browser never
+     works this out for itself — the credit balance lives behind the API. */
+  useEffect(() => {
+    if (!authUser) { setAccount(null); return; }
+    let cancelled = false;
+    api.getMe()
+      .then((me) => { if (!cancelled) setAccount(me.account); })
+      .catch(() => { if (!cancelled) setAccount(null); });
+    return () => { cancelled = true; };
+  }, [authUser]);
+
+  /* A song already paid for stays paid for, even in a brand new job. */
+  useEffect(() => {
+    if (!authUser || !jobIdRef.current || !tokenRef.current || screen !== 'studio') return;
+    let cancelled = false;
+    api.getJob(jobIdRef.current, tokenRef.current)
+      .then((view) => { if (!cancelled) setUnlocked(Boolean(view.unlocked)); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [authUser, screen]);
 
   /* The interface wears the song's accent colour once one exists. */
   useEffect(() => {
@@ -267,6 +309,24 @@ export function App() {
     }
   };
 
+  const unlock = async () => {
+    if (!jobIdRef.current || !tokenRef.current) throw new Error('No song to unlock.');
+    const result = await api.unlockJob(jobIdRef.current, tokenRef.current);
+    setUnlocked(true);
+    setAccount((existing) => (existing
+      ? { ...existing, remaining: result.remaining, unlocked: existing.unlocked + (result.already ? 0 : 1) }
+      : existing));
+  };
+
+  const requestExport = () => {
+    previewRef.current?.pause();
+    if (config?.auth?.enabled && !authUser) {
+      setSignInFor('Sign in to download your video');
+      return;
+    }
+    setExporting(true);
+  };
+
   const patchPlan = (patch: Partial<Plan>) => {
     setPlan((existing) => (existing ? { ...existing, ...patch } : existing));
   };
@@ -281,6 +341,7 @@ export function App() {
     setDirector(null);
     setTrack(null);
     setCurrentTime(0);
+    setUnlocked(false);
   };
 
   /* -------------------------------- views ------------------------------- */
@@ -329,6 +390,43 @@ export function App() {
           <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 16 }} onClick={startOver}>
             New song
           </button>
+        )}
+
+        {config.auth?.enabled && (
+          <div className="account">
+            {authUser ? (
+              <>
+                <span className="credits" data-empty={account?.remaining === 0 ? 'true' : 'false'} title={
+                  account?.resets_at
+                    ? `Resets ${new Date(account.resets_at).toLocaleDateString()}`
+                    : undefined
+                }>
+                  <b className="mono">{account ? account.remaining : '—'}</b>
+                  <span>left</span>
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    if (config.auth?.devStub) stubSignOut();
+                    else void signOut();
+                    setUnlocked(false);
+                  }}
+                  title={authUser.email ?? undefined}
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => setSignInFor('Sign in to videolyrics')}
+              >
+                Sign in
+              </button>
+            )}
+          </div>
         )}
       </header>
 
@@ -416,7 +514,7 @@ export function App() {
                   className="btn btn-primary btn-lg"
                   style={{ width: '100%' }}
                   disabled={!scene || !audioBuffer}
-                  onClick={() => { previewRef.current?.pause(); setExporting(true); }}
+                  onClick={requestExport}
                 >
                   Export MP4
                 </button>
@@ -452,7 +550,20 @@ export function App() {
           plan={plan}
           audioFile={file}
           audioBuffer={audioBuffer}
+          unlocked={unlocked || !config.auth?.enabled}
+          creditsRemaining={account ? account.remaining : null}
+          resetsAt={account?.resets_at ?? null}
+          onUnlock={unlock}
           onClose={() => setExporting(false)}
+        />
+      )}
+
+      {signInFor && (
+        <SignIn
+          config={config}
+          reason={signInFor}
+          onClose={() => setSignInFor(null)}
+          onStubSignedIn={() => setAuthUser(stubRestore())}
         />
       )}
     </>

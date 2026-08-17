@@ -161,6 +161,32 @@ async function main() {
 
     await page.screenshot({ path: path.join(OUT, '4-studio.png'), fullPage: true });
 
+    /* ---- accounts and credits ---------------------------------------- */
+
+    const accountsOn = await page.evaluate(async () => {
+      const config = await fetch('/api/config').then((r) => r.json());
+      return config.auth?.enabled === true;
+    });
+
+    if (accountsOn) {
+      // Anonymous: the export button must lead to a sign-in sheet, not a file.
+      await page.getByRole('button', { name: 'Export MP4' }).click();
+      const signInShown = await page.locator('.dialog h2', { hasText: 'Sign in' })
+        .first().isVisible({ timeout: 5000 }).catch(() => false);
+      step('anonymous export asks for an account', signInShown);
+      await page.screenshot({ path: path.join(OUT, '5-signin.png') });
+
+      await page.fill('#signin-email', args.email || 'e2e@example.com');
+      // Scope to the sheet: the header carries a "Sign in" button too.
+      await page.locator('.dialog').getByRole('button', { name: /^Sign in$|Send me a link/ }).click();
+      await page.waitForSelector('.credits', { timeout: 10_000 });
+
+      const before = await page.locator('.credits b').textContent();
+      step('signed in with a credit balance', before?.trim() === '5', `${before?.trim()} credits`);
+    } else {
+      step('accounts configured', false, 'auth disabled — skipping credit checks');
+    }
+
     // Seek across the song and confirm the preview keeps drawing.
     const previewProbe = await page.evaluate(async () => {
       const canvas = document.querySelector('.stage canvas');
@@ -195,15 +221,26 @@ async function main() {
 
     await page.getByRole('button', { name: 'Export MP4' }).click();
     await page.waitForSelector('.dialog', { timeout: 10_000 });
-    await page.screenshot({ path: path.join(OUT, '5-export.png') });
+    await page.screenshot({ path: path.join(OUT, '6-export.png') });
 
     const encodeStarted = Date.now();
-    await page.getByRole('button', { name: 'Start encoding' }).click();
+    // Signed in and not yet unlocked, the button spends the credit first.
+    const startButton = page.getByRole('button', { name: /Use 1 credit and encode|Start encoding/ });
+    await startButton.click();
+
+    if (accountsOn) {
+      await page.waitForFunction(
+        () => document.querySelector('.credits b')?.textContent?.trim() === '4',
+        { timeout: 30_000 },
+      ).catch(() => {});
+      const after = await page.locator('.credits b').textContent();
+      step('exporting spent exactly one credit', after?.trim() === '4', `${after?.trim()} left`);
+    }
 
     const download = page.waitForEvent('download', { timeout: 900_000 });
     await page.waitForSelector('a.btn-primary[download]', { timeout: 900_000 });
     const encodeSeconds = (Date.now() - encodeStarted) / 1000;
-    await page.screenshot({ path: path.join(OUT, '6-done.png') });
+    await page.screenshot({ path: path.join(OUT, '7-done.png') });
 
     await page.click('a.btn-primary[download]');
     const file = await download;
@@ -246,6 +283,26 @@ async function main() {
     ]);
     const stillStat = await fs.stat(still);
     step('a frame decodes from the middle', stillStat.size > 4000, `${(stillStat.size / 1024).toFixed(0)} KB`);
+
+    // The watermark sits bottom-right. Compare that corner's luminance spread
+    // against the mirrored corner, which the renderer leaves empty: light text
+    // on a dark ground shows up as markedly more variance.
+    const corner = async (x) => {
+      const out = path.join(OUT, `corner-${x}.txt`);
+      const { stdout: stats } = await run(
+        process.env.FFMPEG_BIN || path.join(process.env.HOME || '', 'bin', 'ffmpeg'),
+        ['-v', 'error', '-i', still, '-vf',
+          `crop=iw*0.3:ih*0.12:${x}:ih*0.84,signalstats,metadata=print:key=lavfi.signalstats.YMAX:file=-`,
+          '-f', 'null', '-'],
+      );
+      await fs.writeFile(out, stats).catch(() => {});
+      const match = /YMAX=(\d+)/.exec(stats);
+      return match ? Number(match[1]) : 0;
+    };
+    const rightMax = await corner('iw*0.68');
+    const leftMax = await corner('0');
+    step('the watermark is burned into the frame', rightMax > leftMax + 25,
+      `bottom-right peak ${rightMax} vs bottom-left ${leftMax}`);
 
     step('no console errors', consoleErrors.length === 0,
       consoleErrors.slice(0, 3).join(' | ') || 'clean');

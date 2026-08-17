@@ -10,8 +10,10 @@
 #
 # Logs:  journalctl --user -u videolyrics-api -f
 #
-# Optional art-director credentials live in /home/carlos/videolyrics/.env —
-# keep it chmod 600. Without it the deterministic director runs alone.
+# Credentials live in /home/carlos/videolyrics/.env — keep it chmod 600.
+# That file carries the Supabase keys (accounts and credits) and, optionally,
+# the art-director model key. Without Supabase, the app still aligns, designs
+# and previews; only the download gate and the credit counter go away.
 
 [Unit]
 Description=videolyrics API (alignment + art direction, behind Caddy)
@@ -42,6 +44,10 @@ Environment=MKL_NUM_THREADS=2
 # Acoustic models are cached inside the deploy rather than in a home cache,
 # so a wipe of ~/.cache never costs a 400 MB re-download mid-job.
 Environment=TORCH_HOME=/home/carlos/videolyrics/aligner/.torch
+
+# The mark burned into every frame. Server-side on purpose: no client
+# preference and no model output can switch it off.
+Environment=WATERMARK_TEXT=videolyrics.org
 
 EnvironmentFile=-/home/carlos/videolyrics/.env
 

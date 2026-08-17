@@ -166,6 +166,7 @@ export function demoPlan(): Plan {
     photos: { enabled: false, treatment: 'kenburns', opacity: 0.7, tint: 0.3, changeOn: 'section' },
     reactivity: { pulse: 0.5, flash: 0.25, shake: 0.06, cutOnDownbeat: false },
     title: { show: false, title: '', artist: '', style: 'fade', holdUntil: 0 },
+    watermark: { enabled: true, text: 'videolyrics.org', position: 'bottom-right', opacity: 0.5 },
     cues: [
       { segment: 0, treatment: 'drift', intensity: 0.62, lyricMode: null, accentShift: 0, note: '' },
       { segment: 1, treatment: 'bloom', intensity: 0.5, lyricMode: null, accentShift: 0.05, note: '' },

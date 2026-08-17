@@ -22,6 +22,13 @@ interface Props {
   /** The original upload — its audio stream is copied into the MP4. */
   audioFile: Blob;
   audioBuffer: AudioBuffer;
+  /** Has a credit already been spent on this song? */
+  unlocked: boolean;
+  /** Credits left this month, or null when accounts are unavailable. */
+  creditsRemaining: number | null;
+  resetsAt: string | null;
+  /** Spends the credit. Resolves once the song is unlocked. */
+  onUnlock: () => Promise<void>;
   onClose: () => void;
 }
 
@@ -31,10 +38,17 @@ type Phase =
   | { kind: 'done'; result: EncodeResult; url: string; seconds: number }
   | { kind: 'failed'; message: string };
 
-export function ExportDialog({ scene, plan, audioFile, audioBuffer, onClose }: Props) {
+export function ExportDialog({
+  scene, plan, audioFile, audioBuffer,
+  unlocked, creditsRemaining, resetsAt, onUnlock, onClose,
+}: Props) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  const [unlocking, setUnlocking] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const urlRef = useRef<string | null>(null);
+
+  const needsCredit = !unlocked;
+  const outOfCredits = needsCredit && creditsRemaining !== null && creditsRemaining <= 0;
 
   const size = frameSizeFor(plan);
   const totalFrames = Math.round(scene.alignment.duration * plan.fps);
@@ -43,6 +57,26 @@ export function ExportDialog({ scene, plan, audioFile, audioBuffer, onClose }: P
     abortRef.current?.abort();
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
   }, []);
+
+  /**
+   * Spend the credit first, and only start encoding once the server has
+   * confirmed it. Encoding then failing would otherwise have cost somebody a
+   * credit for a file they never got.
+   */
+  const unlockThenRun = async () => {
+    if (needsCredit) {
+      setUnlocking(true);
+      try {
+        await onUnlock();
+      } catch (error) {
+        setPhase({ kind: 'failed', message: (error as Error).message });
+        return;
+      } finally {
+        setUnlocking(false);
+      }
+    }
+    await run();
+  };
 
   const run = async () => {
     const controller = new AbortController();
@@ -116,6 +150,24 @@ export function ExportDialog({ scene, plan, audioFile, audioBuffer, onClose }: P
 
         {phase.kind === 'idle' && (
           <>
+            {outOfCredits ? (
+              <Notice tone="warn">
+                You have used this month's credits. They come back{' '}
+                {resetsAt ? `on ${new Date(resetsAt).toLocaleDateString(undefined, { day: 'numeric', month: 'long' })}` : 'next month'}.
+                Songs you have already unlocked can still be exported as many times as you like.
+              </Notice>
+            ) : needsCredit ? (
+              <Notice tone="info">
+                This uses <strong>1 of your {creditsRemaining} credits</strong>. It buys the song,
+                not the file — once unlocked you can re-export it at any size, shape or style for
+                nothing.
+              </Notice>
+            ) : (
+              <Notice tone="good">
+                Already unlocked. Export it as many times as you like.
+              </Notice>
+            )}
+
             <p className="hint">
               Your computer does the encoding — nothing is uploaded and nothing is queued.
               Expect roughly a minute per minute of song, faster on a recent machine. The audio is
@@ -123,8 +175,15 @@ export function ExportDialog({ scene, plan, audioFile, audioBuffer, onClose }: P
             </p>
             <div className="row">
               <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-              <button type="button" className="btn btn-primary row-end" onClick={run}>
-                Start encoding
+              <button
+                type="button"
+                className="btn btn-primary row-end"
+                onClick={unlockThenRun}
+                disabled={outOfCredits || unlocking}
+              >
+                {unlocking
+                  ? <><Spinner /> Unlocking…</>
+                  : needsCredit ? 'Use 1 credit and encode' : 'Start encoding'}
               </button>
             </div>
           </>

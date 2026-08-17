@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "start": "node server/index.mjs",
     "typecheck": "tsc -b --noEmit",
-    "test": "node --test shared/plan.test.mjs server/director/director.test.mjs",
+    "test": "node --test shared/plan.test.mjs server/director/director.test.mjs server/accounts.test.mjs",
     "fonts": "node scripts/fetch-fonts.mjs",
     "warmup": "aligner/.venv/bin/python scripts/warm-models.py",
     "test:py": "aligner/.venv/bin/python -m unittest discover -s aligner -p \"test_*.py\"",
@@ -21,6 +21,7 @@
     "deploy": "./ops/deploy.sh"
   },
   "dependencies": {
+    "@supabase/auth-js": "^2.112.3",
     "mediabunny": "^1.54.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

@@ -28,7 +28,11 @@ export const LIMITS = {
   maxLyricChars: 20_000,
   maxDurationSeconds: Number(process.env.MAX_DURATION_SECONDS || 12 * 60),
   retentionMs: Number(process.env.RETENTION_MS || 6 * 60 * 60 * 1000),
+  // Alignment is open to anonymous visitors, so the per-IP cap is the only
+  // thing between one script and both cores for the rest of the day. Signed-in
+  // people are additionally metered by credits at export, so they get room.
   maxJobsPerIpPerHour: Number(process.env.MAX_JOBS_PER_IP || 20),
+  maxAnonJobsPerIpPerHour: Number(process.env.MAX_ANON_JOBS_PER_IP || 3),
   maxTotalBytes: Number(process.env.MAX_TOTAL_BYTES || 3 * 1024 * 1024 * 1024),
 };
 
@@ -54,7 +58,7 @@ function jobDir(id) {
   return path.join(DATA_DIR, id);
 }
 
-export async function createJob({ lyrics, prefs, ip }) {
+export async function createJob({ lyrics, prefs, ip, user = null }) {
   const text = String(lyrics || '');
   if (!text.trim()) throw badRequest('Paste the lyrics first.');
   if (text.length > LIMITS.maxLyricChars) {
@@ -71,6 +75,10 @@ export async function createJob({ lyrics, prefs, ip }) {
     id,
     token,
     ip,
+    // Null for anonymous visitors, who may align and preview but not export.
+    user,
+    songHash: null,
+    unlocked: false,
     state: 'created',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -118,6 +126,10 @@ export async function receiveAudio(job, stream, { filename, contentLength }) {
 
   const dest = path.join(jobDir(job.id), 'audio');
   const out = createWriteStream(dest);
+  // Identify the song as the bytes go past. Doing it here costs nothing —
+  // they are already in memory — and avoids re-reading 40 MB from disk later
+  // just to answer "has this person already paid for this one?".
+  const digest = crypto.createHash('sha256');
   let written = 0;
 
   await new Promise((resolve, reject) => {
@@ -136,6 +148,7 @@ export async function receiveAudio(job, stream, { filename, contentLength }) {
 
     stream.on('data', (chunk) => {
       written += chunk.length;
+      digest.update(chunk);
       if (written > LIMITS.maxAudioBytes) {
         settle(badRequest(`That file is over the ${mb(LIMITS.maxAudioBytes)} limit.`));
       }
@@ -155,6 +168,7 @@ export async function receiveAudio(job, stream, { filename, contentLength }) {
   }
 
   job.audioBytes = written;
+  job.songHash = digest.digest('hex');
   job.audioName = String(filename || '').slice(0, 120) || 'audio';
   job.updatedAt = Date.now();
   await persist(job);
@@ -169,7 +183,16 @@ export function enqueue(job) {
 
   job.state = 'queued';
   job.controller = new AbortController();
-  queue.push(job.id);
+
+  // Signed-in people go ahead of anonymous ones. Anonymous alignment is a
+  // free sample; it should never make somebody with an account wait.
+  if (job.user) {
+    const firstAnon = queue.findIndex((id) => !jobs.get(id)?.user);
+    if (firstAnon === -1) queue.push(job.id);
+    else queue.splice(firstAnon, 0, job.id);
+  } else {
+    queue.push(job.id);
+  }
   updateQueuePositions();
   emit(job, { message: queueMessage(job) });
   drain();
@@ -316,6 +339,8 @@ export function publicJob(job, { includeResult = false } = {}) {
     queuePosition: job.queuePosition || 0,
     audioBytes: job.audioBytes,
     audioName: job.audioName,
+    songHash: job.songHash,
+    unlocked: Boolean(job.unlocked),
     createdAt: job.createdAt,
     expiresAt: job.createdAt + LIMITS.retentionMs,
   };
@@ -405,13 +430,18 @@ async function dirSize(dir) {
 
 const ipHistory = new Map();
 
-export function rateLimit(ip) {
+export function rateLimit(ip, signedIn = false) {
   const now = Date.now();
   const hour = 60 * 60 * 1000;
+  const cap = signedIn ? LIMITS.maxJobsPerIpPerHour : LIMITS.maxAnonJobsPerIpPerHour;
+
   const history = (ipHistory.get(ip) || []).filter((t) => now - t < hour);
-  if (history.length >= LIMITS.maxJobsPerIpPerHour) {
+  if (history.length >= cap) {
     const wait = Math.ceil((hour - (now - history[0])) / 60000);
-    const error = badRequest(`That's ${LIMITS.maxJobsPerIpPerHour} songs this hour. Try again in ${wait} minutes.`);
+    const error = badRequest(signedIn
+      ? `That's ${cap} songs this hour. Try again in ${wait} minutes.`
+      : `That's ${cap} songs this hour without an account. Sign in to do more — `
+        + `it's free — or try again in ${wait} minutes.`);
     error.status = 429;
     throw error;
   }

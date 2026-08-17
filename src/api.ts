@@ -4,6 +4,25 @@ import type { Job, Plan, DirectorInfo, Prefs, ServerConfig } from './types';
 
 const BASE = '/api';
 
+/**
+ * Two credentials travel to the API and they mean different things.
+ * `Authorization: Bearer` is the Supabase session — who you are. `X-Job-Token`
+ * is a capability for one job — what you may touch. Sharing a header between
+ * them would make /unlock impossible to express.
+ */
+let accessToken: string | null = null;
+
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
+function headers(jobToken?: string, extra: Record<string, string> = {}): Record<string, string> {
+  const out: Record<string, string> = { ...extra };
+  if (accessToken) out.authorization = `Bearer ${accessToken}`;
+  if (jobToken) out['x-job-token'] = jobToken;
+  return out;
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -37,9 +56,32 @@ export interface CreatedJob {
 export function createJob(lyrics: string, prefs: Prefs): Promise<CreatedJob> {
   return request<CreatedJob>('/jobs', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: headers(undefined, { 'content-type': 'application/json' }),
     body: JSON.stringify({ lyrics, prefs }),
   });
+}
+
+export interface Account {
+  ok: boolean;
+  email: string | null;
+  remaining: number;
+  per_period: number;
+  resets_at: string | null;
+  unlocked: number;
+}
+
+export function getMe(): Promise<{ user: { id: string; email: string | null }; account: Account }> {
+  return request('/me', { headers: headers() });
+}
+
+export function unlockJob(id: string, jobToken: string): Promise<{
+  ok: boolean; already: boolean; remaining: number; resetsAt: string | null;
+}> {
+  return request(`/jobs/${id}/unlock`, { method: 'POST', headers: headers(jobToken) });
+}
+
+export function getJob(id: string, jobToken: string, full = false): Promise<Job> {
+  return request<Job>(`/jobs/${id}${full ? '?full=1' : ''}`, { headers: headers(jobToken) });
 }
 
 /**
@@ -57,7 +99,8 @@ export function uploadAudio(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', `${BASE}/jobs/${id}/audio`);
-    xhr.setRequestHeader('authorization', `Bearer ${token}`);
+    xhr.setRequestHeader('x-job-token', token);
+    if (accessToken) xhr.setRequestHeader('authorization', `Bearer ${accessToken}`);
     xhr.setRequestHeader('x-filename', encodeURIComponent(file.name).slice(0, 120));
     xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
 
@@ -81,7 +124,7 @@ export function uploadAudio(
 export function startJob(id: string, token: string): Promise<{ job: Job }> {
   return request<{ job: Job }>(`/jobs/${id}/start`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}` },
+    headers: headers(token),
   });
 }
 
@@ -90,7 +133,7 @@ export function redirectJob(
 ): Promise<{ plan: Plan; director: DirectorInfo }> {
   return request<{ plan: Plan; director: DirectorInfo }>(`/jobs/${id}/redirect`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    headers: headers(token, { 'content-type': 'application/json' }),
     body: JSON.stringify({ prefs, useLlm }),
   });
 }
@@ -98,7 +141,7 @@ export function redirectJob(
 export function cancelJob(id: string, token: string): Promise<void> {
   return request(`/jobs/${id}`, {
     method: 'DELETE',
-    headers: { authorization: `Bearer ${token}` },
+    headers: headers(token),
   });
 }
 

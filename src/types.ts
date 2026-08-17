@@ -103,6 +103,11 @@ export interface Plan {
   };
   reactivity: { pulse: number; flash: number; shake: number; cutOnDownbeat: boolean };
   title: { show: boolean; title: string; artist: string; style: string; holdUntil: number };
+  watermark: {
+    enabled: boolean; text: string;
+    position: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left' | 'bottom-centre';
+    opacity: number;
+  };
   cues: Cue[];
   notes: string;
   source: string;
@@ -133,6 +138,10 @@ export interface Job {
   queuePosition: number;
   audioBytes: number;
   audioName: string | null;
+  /** sha256 of the uploaded audio — the key a credit is spent against. */
+  songHash: string | null;
+  /** True once a credit has been spent on this song by the signed-in caller. */
+  unlocked: boolean;
   createdAt: number;
   expiresAt: number;
   alignment?: Alignment;
@@ -161,6 +170,15 @@ export interface FontInfo {
 }
 
 export interface ServerConfig {
+  auth: {
+    enabled: boolean;
+    url: string | null;
+    anonKey: string | null;
+    google: boolean;
+    freeCredits: number;
+    devStub: boolean;
+  };
+  watermark: { enabled: boolean; text: string; position: string; opacity: number };
   limits: {
     maxAudioBytes: number; maxLyricChars: number;
     maxDurationSeconds: number; retentionHours: number;

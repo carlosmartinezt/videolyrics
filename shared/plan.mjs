@@ -38,6 +38,9 @@ export const ALIGNMENTS = ['left', 'center', 'right'];
 export const PHOTO_TREATMENTS = ['kenburns', 'flash', 'ghost', 'blend', 'plate'];
 export const PHOTO_CHANGE = ['section', 'line', 'downbeat', 'slow'];
 export const TITLE_STYLES = ['stamp', 'fade', 'slide', 'none'];
+export const WATERMARK_POSITIONS = [
+  'bottom-right', 'bottom-left', 'top-right', 'top-left', 'bottom-centre',
+];
 export const RESOLUTIONS = [720, 1080];
 export const FPS_CHOICES = [24, 30, 60];
 
@@ -125,6 +128,10 @@ export function defaultPlan() {
     },
 
     title: { show: true, title: '', artist: '', style: 'fade', holdUntil: 0 },
+
+    // Overwritten from server config on every job. The default is on: a plan
+    // that somehow arrives without one should still carry the mark.
+    watermark: { enabled: true, text: 'videolyrics.org', position: 'bottom-right', opacity: 0.5 },
 
     cues: [],
     notes: '',
@@ -300,6 +307,18 @@ export function normalisePlan(raw, { base = defaultPlan(), segments = [] } = {})
         segment: i, treatment: 'drift', intensity: 0.5, lyricMode: null, accentShift: 0, note: '',
       })
     : [...byIndex.values()].sort((a, b) => a.segment - b.segment);
+
+  /* watermark ------------------------------------------------------------ */
+  // Not negotiable by the model or the client's plan edits: the values come
+  // from the server's own configuration, and `input` is ignored entirely.
+  // Anyone determined can still edit the renderer in their browser, but
+  // nothing in the ordinary path can switch this off by accident.
+  plan.watermark = {
+    enabled: base.watermark ? base.watermark.enabled !== false : true,
+    text: str(base.watermark?.text, 60, 'videolyrics.org'),
+    position: pick(base.watermark?.position, WATERMARK_POSITIONS, 'bottom-right'),
+    opacity: clamp(base.watermark?.opacity, 0.15, 1, 0.5),
+  };
 
   plan.notes = str(input.notes, 600, base.notes);
   plan.source = str(input.source, 24, base.source || 'default');
