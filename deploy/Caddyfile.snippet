@@ -1,0 +1,49 @@
+# Caddy site block for videolyrics.carlosmartinezt.com
+#
+# Append to /etc/caddy/Caddyfile, then: sudo systemctl reload caddy
+#
+# Same pattern as journal and njtransit: Caddy serves the built SPA straight
+# out of the repo's dist/, so `npm run build` *is* the deploy. /api proxies to
+# the Node service (videolyrics-api.service), which owns the uploaded audio
+# and runs the aligner.
+
+videolyrics.carlosmartinezt.com {
+    encode gzip zstd
+
+    handle /api/* {
+        reverse_proxy 127.0.0.1:3058 {
+            # Alignment takes minutes on this box and progress arrives over
+            # SSE. Both need Caddy to stop buffering and stop timing out.
+            flush_interval -1
+            transport http {
+                read_timeout 30m
+                write_timeout 30m
+            }
+        }
+    }
+
+    handle {
+        root * /home/carlos/videolyrics/dist
+
+        # Everything the page needs is same-origin: fonts are self-hosted and
+        # the only network calls are /api on this host. blob: is required
+        # because the finished MP4 is handed to the page as a blob URL, and
+        # worker-src blob: because the media toolkit spawns workers to encode.
+        header {
+            Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+            Referrer-Policy "strict-origin-when-cross-origin"
+            X-Content-Type-Options "nosniff"
+            Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+            -Server
+        }
+
+        # Hashed assets are immutable; the shell must never be cached or a
+        # deploy would leave people on the previous build.
+        @assets path /assets/* /fonts/*
+        header @assets Cache-Control "public, max-age=31536000, immutable"
+        header /index.html Cache-Control "no-cache"
+
+        try_files {path} /index.html
+        file_server
+    }
+}

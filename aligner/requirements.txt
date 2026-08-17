@@ -1,0 +1,6 @@
+torch==2.5.1
+torchaudio==2.5.1
+numpy>=1.26,<2.2
+scipy>=1.11
+librosa==0.10.2.post1
+soundfile>=0.12

@@ -1,0 +1,15 @@
+The typefaces in this directory are distributed under the SIL Open Font
+License 1.1, which permits redistribution and embedding, including in
+video output. Full text: https://openfontlicense.org
+
+  Anton — https://fonts.google.com/specimen/Anton
+  Bebas Neue — https://fonts.google.com/specimen/Bebas+Neue
+  Archivo Black — https://fonts.google.com/specimen/Archivo+Black
+  Inter — https://fonts.google.com/specimen/Inter
+  Space Grotesk — https://fonts.google.com/specimen/Space+Grotesk
+  Oswald — https://fonts.google.com/specimen/Oswald
+  Playfair Display — https://fonts.google.com/specimen/Playfair+Display
+  Cormorant Garamond — https://fonts.google.com/specimen/Cormorant+Garamond
+  DM Serif Display — https://fonts.google.com/specimen/DM+Serif+Display
+  Caveat — https://fonts.google.com/specimen/Caveat
+  JetBrains Mono — https://fonts.google.com/specimen/JetBrains+Mono

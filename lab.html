@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Render lab</title>
+    <link rel="stylesheet" href="/fonts/fonts.css" />
+    <style>
+      body { margin: 0; background: #0a0b0d; color: #e9ebf0;
+             font: 13px/1.4 "Space Grotesk", system-ui, sans-serif; }
+      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px; }
+      figure { margin: 0; }
+      canvas { display: block; width: 100%; border-radius: 6px; background: #000; }
+      figcaption { padding: 5px 2px; color: #8b909c; font-family: "JetBrains Mono", monospace; font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <div class="grid" id="grid"></div>
+    <script type="module" src="/src/lab.tsx"></script>
+  </body>
+</html>

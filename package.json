@@ -1,0 +1,38 @@
+{
+  "name": "videolyrics",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Upload an mp3, paste the lyrics, get a lyric video.",
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,magenta \"vite\" \"node --watch server/index.mjs\"",
+    "dev:web": "vite",
+    "dev:api": "node --watch server/index.mjs",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "start": "node server/index.mjs",
+    "typecheck": "tsc -b --noEmit",
+    "test": "node --test shared/plan.test.mjs server/director/director.test.mjs",
+    "fonts": "node scripts/fetch-fonts.mjs",
+    "warmup": "aligner/.venv/bin/python scripts/warm-models.py",
+    "test:py": "aligner/.venv/bin/python -m unittest discover -s aligner -p \"test_*.py\"",
+    "e2e": "node scripts/e2e.mjs",
+    "lab": "node scripts/contact-sheet.mjs",
+    "deploy": "./ops/deploy.sh"
+  },
+  "dependencies": {
+    "mediabunny": "^1.54.0",
+    "mp4-muxer": "^5.2.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "concurrently": "^10.0.5",
+    "playwright-core": "^1.62.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+data/
+.env
+aligner/.venv/
+aligner/.torch/
+public/fonts/*.woff2
+*.tsbuildinfo

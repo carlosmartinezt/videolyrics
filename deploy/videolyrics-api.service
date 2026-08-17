@@ -1,0 +1,60 @@
+# videolyrics — the API that listens to songs.
+#
+# A *user* unit, which needs no sudo and still survives reboot because
+# lingering is enabled for carlos (`loginctl enable-linger carlos`):
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/videolyrics-api.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now videolyrics-api
+#
+# Logs:  journalctl --user -u videolyrics-api -f
+#
+# Optional art-director credentials live in /home/carlos/videolyrics/.env —
+# keep it chmod 600. Without it the deterministic director runs alone.
+
+[Unit]
+Description=videolyrics API (alignment + art direction, behind Caddy)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/carlos/videolyrics
+ExecStart=/usr/bin/env node server/index.mjs
+Restart=always
+RestartSec=3
+
+# Only ever binds loopback; Caddy is the only thing that reaches it.
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3058
+
+# The static ffmpeg build lives in ~/bin and is not on a service's PATH.
+Environment=FFMPEG_BIN=/home/carlos/bin/ffmpeg
+Environment=FFPROBE_BIN=/home/carlos/bin/ffprobe
+
+# Two cores, shared with five other services. One alignment at a time, and
+# torch reads this at import — setting it later leaves it single-threaded.
+Environment=ALIGNER_THREADS=2
+Environment=OMP_NUM_THREADS=2
+Environment=MKL_NUM_THREADS=2
+
+# Acoustic models are cached inside the deploy rather than in a home cache,
+# so a wipe of ~/.cache never costs a 400 MB re-download mid-job.
+Environment=TORCH_HOME=/home/carlos/videolyrics/aligner/.torch
+
+EnvironmentFile=-/home/carlos/videolyrics/.env
+
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Alignment is memory-hungry in bursts; this box has 7.6 GB shared with
+# everything else, so cap it rather than let a pathological upload swap.
+MemoryMax=3G
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=videolyrics-api
+
+[Install]
+WantedBy=default.target
