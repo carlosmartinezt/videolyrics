@@ -1,0 +1,56 @@
+# videolyrics as a container.
+#
+#   docker compose up -d          start it
+#   docker compose logs -f        watch it
+#   docker compose down           stop it
+#
+# Caddy is deliberately not in here. This box already runs Caddy on :443 for
+# ten sites with a Cloudflare origin certificate; a second one in a container
+# would fight it for the port. The container speaks plain HTTP on 3058 and the
+# host's Caddy proxies to it, exactly as it proxies to the systemd service
+# today — so switching between the two is a matter of which one is listening.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: videolyrics:latest
+    container_name: videolyrics-api
+
+    # Bound to loopback, never 0.0.0.0. Caddy is the only thing that should be
+    # able to reach this; publishing it on the public interface would put an
+    # unauthenticated upload endpoint straight onto the internet, past the
+    # rate limits Caddy and Cloudflare apply.
+    #
+    # Override the host side to run alongside the systemd service while
+    # testing:  VIDEOLYRICS_PORT=3059 docker compose up -d
+    ports:
+      - "127.0.0.1:${VIDEOLYRICS_PORT:-3058}:3058"
+
+    # Secrets stay on the host and are read at start. Nothing sensitive is
+    # baked into the image.
+    env_file:
+      - .env
+
+    volumes:
+      - videolyrics-data:/data
+
+    restart: unless-stopped
+
+    # Alignment is the memory-hungry part and it is bounded work, so a cap
+    # turns "torch ate the box" into "one job failed". The host has 7.6 GB and
+    # runs nine other things.
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  videolyrics-data:

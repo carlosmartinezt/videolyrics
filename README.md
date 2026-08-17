@@ -280,6 +280,64 @@ if the reload fails. That care is warranted: `/etc/caddy/Caddyfile` serves ten
 sites and a stray brace takes all of them down at once. Running it twice is a
 no-op.
 
+### The certificate
+
+`videolyrics.org` uses a **Cloudflare Origin CA certificate**, installed with
+`sudo ops/install-origin-cert.sh <cert> <key>`, while
+`videolyrics.carlosmartinezt.com` still uses automatic Let's Encrypt. That
+asymmetry is deliberate. Cloudflare's edge answers every `http://` request on
+the `videolyrics.org` zone with a 301 before it reaches the server — the
+`/.well-known/acme-challenge/` path included — so HTTP-01 validation can never
+complete, and TLS-ALPN-01 cannot either because Cloudflare terminates TLS at
+the edge. Automatic certificates are simply not available for that zone while
+it is proxied. The symptom is a Cloudflare **525**, which looks like a server
+fault and is not one.
+
+Tell a healthy zone from a broken one without any Cloudflare access:
+
+```sh
+curl -sSD- -o /dev/null http://<host>/probe
+```
+
+A `308` **with** a `cf-cache-status` header came from Caddy through the proxy
+and ACME will work. A `301` **without** one was invented at the edge; the
+origin never saw the request, and no certificate will ever issue.
+
+## Docker
+
+```sh
+ops/docker-build.sh              # build the image, refresh dist/
+docker compose up -d             # run it
+```
+
+A new server needs Docker and nothing else — no Python, no venv, no pip, no
+torch, no model download, no static ffmpeg in `~/bin`, no Node version to
+match. The image is roughly 3 GB, almost all of it torch and the two acoustic
+models, which are baked in rather than fetched on first run so a fresh
+container never stalls for two minutes inside somebody's first job.
+
+Two details worth knowing:
+
+- **Caddy still serves `dist/` off the disk.** The build copies it out of the
+  finished image onto the host, so the caching and CSP headers in
+  `deploy/Caddyfile.snippet` keep applying and the Caddy configuration does not
+  change at all. The container produces the front end; Caddy serves it.
+- **`.env` is mounted, never baked in.** A secret compiled into an image leaks
+  to anyone who can pull it. Uploads and jobs live on a named volume for the
+  same reason in reverse — inside the image they would vanish on every rebuild.
+
+The container and the systemd unit are interchangeable; both speak plain HTTP
+on 3058 and Caddy cannot tell them apart. Run the container on a spare port to
+compare them side by side before committing:
+
+```sh
+VIDEOLYRICS_PORT=3059 docker compose up -d
+curl -s localhost:3059/api/health
+```
+
+Switching over is `systemctl --user stop videolyrics-api` then
+`docker compose up -d`; going back is the reverse.
+
 ## Limits and what they cost
 
 | | |
