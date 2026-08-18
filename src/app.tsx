@@ -22,6 +22,10 @@ import {
   type AuthUser,
 } from './lib/auth';
 import { loadReference, mergeColours, releaseReference, type Reference } from './lib/images';
+import {
+  activeSession, clearActive, deleteSession, getSession, listSessions, markActive,
+  saveSession, type SessionMeta,
+} from './lib/sessions';
 // `track` is taken by the AudioTrack state below.
 import { track as trackEvent } from './lib/analytics';
 import type { Scene } from './render/engine';
@@ -80,6 +84,9 @@ export function App() {
   const [redesigning, setRedesigning] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+
+  const [sessions, setSessions] = useState<SessionMeta[]>([]);
+  const [resuming, setResuming] = useState(false);
 
   const [account, setAccount] = useState<api.Account | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -242,6 +249,79 @@ export function App() {
     });
   };
 
+  /* ---------------------------- resuming -------------------------------- */
+
+  /**
+   * Reopen a stored session.
+   *
+   * The audio comes from IndexedDB and the alignment and plan from the server,
+   * which is the only copy of them. If the server has since expired the job
+   * there is nothing to reopen, so the local record goes too rather than
+   * sitting in the list as a door onto nothing.
+   */
+  const resumeSession = useCallback(async (id: string, { announce = true } = {}) => {
+    setResuming(true);
+    setError(null);
+    try {
+      const stored = await getSession(id);
+      if (!stored) { clearActive(); return false; }
+
+      const restored = new File([stored.audio], stored.meta.audioName, {
+        type: stored.meta.audioType || 'audio/mpeg',
+      });
+
+      const fetched = await api.getJob(id, stored.meta.token, true).catch(() => null);
+      if (!fetched || !fetched.alignment || !fetched.plan) {
+        await deleteSession(id);
+        setSessions((existing) => existing.filter((s) => s.id !== id));
+        if (announce) setError('That video has expired — the server keeps a song for a few hours only.');
+        return false;
+      }
+
+      const buffer = await decodeAudioFile(restored);
+
+      tokenRef.current = stored.meta.token;
+      jobIdRef.current = id;
+      setFile(restored);
+      setAudioBuffer(buffer);
+      setLyrics(stored.meta.lyrics);
+      setTitle(stored.meta.title);
+      setArtist(stored.meta.artist);
+      setPrefs(stored.meta.prefs ?? {});
+      setJob(fetched);
+      setAlignment(fetched.alignment);
+      setPlan(fetched.plan);
+      setUnlocked(Boolean(fetched.unlocked));
+      setScreen('studio');
+      markActive(id);
+      return true;
+    } catch (e) {
+      if (announce) setError((e as Error).message);
+      return false;
+    } finally {
+      setResuming(false);
+    }
+  }, []);
+
+  /* List what this browser still has, and reopen whatever was open when the
+     page was last left — which is how the round trip through Google stopped
+     losing people's work. */
+  useEffect(() => {
+    if (!config) return;
+    let cancelled = false;
+    void listSessions(config.limits.retentionHours).then((found) => {
+      if (cancelled) return;
+      setSessions(found);
+      const active = activeSession();
+      if (active && found.some((s) => s.id === active)) {
+        void resumeSession(active, { announce: false });
+      } else if (active) {
+        clearActive();
+      }
+    });
+    return () => { cancelled = true; };
+  }, [config, resumeSession]);
+
   /* ------------------------------ the run ------------------------------- */
 
   const currentPrefs = useCallback((): Prefs => ({
@@ -282,6 +362,29 @@ export function App() {
       setPlan(finished.plan);
       setDirector(finished.director ?? null);
       setScreen('studio');
+
+      // Keep the whole thing on disk before anything can navigate away from
+      // it. Signing in to download is a full page load, and until this existed
+      // that load discarded the video the person was trying to download.
+      void saveSession(
+        {
+          id: created.id,
+          token: created.token,
+          createdAt: Date.now(),
+          title: title.trim(),
+          artist: artist.trim(),
+          lyrics,
+          prefs,
+          audioName: file.name,
+          audioType: file.type,
+          durationSeconds: finished.alignment.duration,
+          template: finished.plan.template ?? null,
+        },
+        file,
+      ).then(() => {
+        markActive(created.id);
+        if (config) void listSessions(config.limits.retentionHours).then(setSessions);
+      });
 
       trackEvent('video_ready', {
         seconds: Math.round((performance.now() - startedAt) / 1000),
@@ -360,7 +463,15 @@ export function App() {
   const startOver = () => {
     watcherRef.current?.close();
     previewRef.current?.pause();
+    // Stop it reopening by itself, but keep it: the song is still in the
+    // recent list and still costs nothing to go back to.
+    clearActive();
     setScreen('setup');
+    setFile(null);
+    setAudioBuffer(null);
+    setLyrics('');
+    setTitle('');
+    setArtist('');
     setJob(null);
     setAlignment(null);
     setPlan(null);
@@ -402,7 +513,10 @@ export function App() {
   return (
     <>
       <header className="topbar">
-        <div className="wordmark">video<span>lyrics</span></div>
+        <div className="wordmark">
+          <img src="/brand/logo.svg" alt="" width={30} height={30} />
+          <span className="wordmark-text">video<span>lyrics</span></span>
+        </div>
         {alignment && (
           <div className="topbar-meta">
             <span>{formatTime(alignment.duration)}</span>
@@ -474,6 +588,8 @@ export function App() {
             artist={artist}
             references={references}
             prefs={prefs}
+            sessions={sessions}
+            resuming={resuming}
             error={error}
             onFile={acceptAudio}
             onLyrics={setLyrics}
@@ -483,6 +599,11 @@ export function App() {
             onAddReferences={addReferences}
             onRemoveReference={removeReference}
             onGenerate={generate}
+            onResume={(id) => { void resumeSession(id); }}
+            onForget={(id) => {
+              void deleteSession(id).then(() =>
+                setSessions((existing) => existing.filter((s) => s.id !== id)));
+            }}
           />
         )}
 
@@ -624,6 +745,8 @@ function Setup(props: {
   artist: string;
   references: Reference[];
   prefs: Prefs;
+  sessions: SessionMeta[];
+  resuming: boolean;
   error: string | null;
   onFile: (file: File) => void;
   onLyrics: (value: string) => void;
@@ -633,11 +756,13 @@ function Setup(props: {
   onAddReferences: (files: File[]) => void;
   onRemoveReference: (id: string) => void;
   onGenerate: () => void;
+  onResume: (id: string) => void;
+  onForget: (id: string) => void;
 }) {
   const {
     config, support, file, audioBuffer, lyrics, title, artist, references, prefs,
-    error, onFile, onLyrics, onTitle, onArtist, onPrefs,
-    onAddReferences, onRemoveReference, onGenerate,
+    sessions, resuming, error, onFile, onLyrics, onTitle, onArtist, onPrefs,
+    onAddReferences, onRemoveReference, onGenerate, onResume, onForget,
   } = props;
 
   const audioInput = useRef<HTMLInputElement>(null);
@@ -714,6 +839,51 @@ function Setup(props: {
           font costs a minute and a credit's worth of patience. */}
       <div className="composer">
         <div className="composer-main">
+          {sessions.length > 0 && (
+            /* Everything this browser has made that the server has not yet
+               expired. Signing in to download used to lose the video outright;
+               now the round trip reopens it, and anything else is one click. */
+            <section className="card">
+              <CardHead
+                title="Pick up where you left off"
+                aside={`${sessions.length} kept for ${config.limits.retentionHours}h`}
+              />
+              <div className="sessions">
+                {sessions.map((session) => (
+                  <div className="session" key={session.id}>
+                    <button
+                      type="button"
+                      className="session-open"
+                      disabled={resuming}
+                      onClick={() => onResume(session.id)}
+                    >
+                      <span className="name">
+                        {session.title || session.audioName || 'Untitled'}
+                        {session.artist && <span className="by"> · {session.artist}</span>}
+                      </span>
+                      <span className="meta mono hint">
+                        {formatTime(session.durationSeconds)} · {ago(session.createdAt)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="session-forget"
+                      onClick={() => onForget(session.id)}
+                      aria-label={`Forget ${session.title || session.audioName || 'this song'}`}
+                      title="Remove from this list"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p className="hint" style={{ marginTop: 10 }}>
+                Kept in this browser only, and only while the server still holds the song.
+                Re-exporting one of these never costs another credit.
+              </p>
+            </section>
+          )}
+
           <section className="card card-grow">
             <CardHead
               step={1}
@@ -1000,6 +1170,16 @@ function Working(
 }
 
 /* -------------------------------- helpers --------------------------------- */
+
+/** "just now", "12m ago" — enough to tell two takes of the same song apart. */
+function ago(at: number): string {
+  const seconds = Math.max(0, (Date.now() - at) / 1000);
+  if (seconds < 90) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m ago`;
+}
 
 function isAudioFile(file: File): boolean {
   if (file.type.startsWith('audio/')) return true;

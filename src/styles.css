@@ -121,8 +121,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 
 .wordmark {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  /* centre, not baseline: the mark is an image and has no useful baseline of
+     its own, so baseline alignment hangs it below the type. */
+  align-items: center;
+  gap: 9px;
   font-family: var(--display);
   font-size: 21px;
   letter-spacing: 0.01em;
@@ -130,7 +132,19 @@ button, input, textarea, select { font: inherit; color: inherit; }
   color: var(--text);
 }
 
-.wordmark span { color: var(--accent); }
+.wordmark img {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: block;
+  flex: none;
+}
+
+.wordmark-text { display: inline-flex; align-items: baseline; }
+
+/* Scoped through .wordmark-text so it colours "lyrics" and not the whole
+   wordmark — .wordmark span alone now also matches the text wrapper. */
+.wordmark-text span { color: var(--accent); }
 
 .topbar-meta {
   margin-left: auto;
@@ -896,3 +910,47 @@ footer.site a:hover { color: var(--text); border-color: var(--accent); }
   gap: 26px 44px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
+
+/* ------------------------------- sessions --------------------------------- */
+
+.sessions { display: grid; gap: 6px; }
+
+.session { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: stretch; }
+
+.session-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 13px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-soft);
+  background: var(--ink-raise);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.session-open:hover:not(:disabled) {
+  border-color: var(--accent-line);
+  background: color-mix(in oklab, var(--accent) 6%, var(--ink-raise));
+}
+
+.session-open:disabled { opacity: 0.55; cursor: progress; }
+.session-open .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-open .by { color: var(--muted); font-weight: 400; }
+
+.session-forget {
+  padding: 0 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-soft);
+  background: transparent;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.session-forget:hover { color: var(--fg); border-color: var(--line); }
