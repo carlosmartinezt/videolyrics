@@ -104,7 +104,7 @@ async function main() {
       });
       renderer.render(at);
     } catch (error) {
-      caption.textContent = `${template.name} — FAILED: ${(error as Error).message}`;
+      caption.textContent = `${template.name} FAILED: ${(error as Error).message}`;
       caption.style.color = '#ff6a5e';
       console.error(template.id, error);
     }

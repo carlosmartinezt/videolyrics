@@ -174,7 +174,7 @@ export function ExportDialog({
             ) : needsCredit ? (
               <Notice tone="info">
                 This uses <strong>1 of your {creditsRemaining} credits</strong>. It buys the song,
-                not the file — once unlocked you can re-export it at any size, shape or style for
+                not the file. Once unlocked you can re-export it at any size, shape or style for
                 nothing.
               </Notice>
             ) : (
@@ -184,7 +184,7 @@ export function ExportDialog({
             )}
 
             <p className="hint">
-              Your computer does the encoding — nothing is uploaded and nothing is queued.
+              Your computer does the encoding, so nothing is uploaded and nothing is queued.
               Expect roughly a minute per minute of song, faster on a recent machine. The audio is
               copied from your file rather than re-encoded, so it comes through exactly as it went in.
             </p>
@@ -242,7 +242,7 @@ export function ExportDialog({
                 ? ` The ${phase.result.audio.codec?.toUpperCase()} audio was copied across untouched.`
                 : phase.result.audio.method === 'encoded'
                   ? ` Audio re-encoded as ${phase.result.audio.codec?.toUpperCase()}.`
-                  : ' There is no audio track — the source format could not be carried or re-encoded.'}
+                  : ' There is no audio track, because the source format could not be carried or re-encoded.'}
             </Notice>
             <video
               src={phase.url}

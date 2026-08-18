@@ -160,7 +160,7 @@ class Aligner:
         # rather than a cryptic one from the C++ kernel.
         if len(flat) > num_frames:
             raise ValueError(
-                "There are more lyric characters than the audio has frames — "
+                "There are more lyric characters than the audio has frames. "
                 "the lyrics are much longer than the song."
             )
 

@@ -274,7 +274,7 @@ export function App() {
       if (!fetched || !fetched.alignment || !fetched.plan) {
         await deleteSession(id);
         setSessions((existing) => existing.filter((s) => s.id !== id));
-        if (announce) setError('That video has expired — the server keeps a song for a few hours only.');
+        if (announce) setError('That video has expired. The server keeps a song for a few hours only.');
         return false;
       }
 
@@ -541,7 +541,7 @@ export function App() {
                     ? `Resets ${new Date(account.resets_at).toLocaleDateString()}`
                     : undefined
                 }>
-                  <b className="mono">{account ? account.remaining : '—'}</b>
+                  <b className="mono">{account ? account.remaining : '-'}</b>
                   <span>left</span>
                 </span>
                 <button
@@ -779,7 +779,7 @@ function Setup(props: {
           <h1>Give it a song.<br />Get back a <em>video</em>.</h1>
           <p className="hero-lede">
             Upload the track and paste the lyrics. It listens to the vocal, works out when every
-            single word is sung, reads the lyrics for mood, and designs the whole thing — then your
+            single word is sung, reads the lyrics for mood, and designs the whole thing, and then your
             browser encodes the MP4.
           </p>
 
@@ -830,7 +830,7 @@ function Setup(props: {
             <span><b>Up to {Math.round(config.limits.maxDurationSeconds / 60)} min</b> per song</span>
           </div>
         </div>
-        <HeroCanvas fonts={config.fonts} label="Live — not a recording" />
+        <HeroCanvas fonts={config.fonts} label="Live, not a recording" />
       </section>
 
       {/* Left is what the video is made of, right is how it looks. The design
@@ -904,7 +904,7 @@ function Setup(props: {
               maxLength={config.limits.maxLyricChars}
             />
             <p className="hint" style={{ marginTop: 8 }}>
-              Punctuation and capitals are kept exactly as you type them — that is what ends up on screen.
+              Punctuation and capitals are kept exactly as you type them, because that is what ends up on screen.
             </p>
           </section>
 
@@ -937,7 +937,7 @@ function Setup(props: {
               <div className="field">
                 <label>Reference pictures</label>
                 <span className="hint">
-                  Used in the video and to steer the colours. They stay in your browser — only the
+                  Used in the video and to steer the colours. They stay in your browser, and only the
                   colours pulled out of them are sent.
                 </span>
                 <input
@@ -983,7 +983,7 @@ function Setup(props: {
           <section className="card" style={{ paddingBottom: 14 }}>
             <CardHead title="How it looks" aside="all optional" />
             <p className="hint">
-              Every one of these can be left alone — anything you do not set is chosen by reading the
+              Every one of these can be left alone. Anything you do not set is chosen by reading the
               music and the lyrics. Set them now and the first video is already yours.
             </p>
           </section>
@@ -1001,9 +1001,9 @@ function Setup(props: {
                   value={prefs.aspect ?? ''}
                   onChange={(event) => onPrefs({ aspect: event.target.value || undefined })}
                 >
-                  <option value="">Auto — 16:9 unless the pictures suggest otherwise</option>
+                  <option value="">Auto: 16:9 unless the pictures suggest otherwise</option>
                   {Object.entries(config.aspects).map(([key, value]) => (
-                    <option key={key} value={key}>{key} · {value.name} — {value.note}</option>
+                    <option key={key} value={key}>{key} · {value.name} ({value.note})</option>
                   ))}
                 </select>
               </div>
@@ -1088,7 +1088,7 @@ function Setup(props: {
             <p>
               The timing is done by forced alignment against the lyrics you provide, so the words
               cannot come out in the wrong order the way automatic transcription does on singing.
-              The video itself is drawn and encoded by your own browser — it is never rendered on,
+              The video itself is drawn and encoded by your own browser. It is never rendered on,
               or uploaded to, our server.
             </p>
           </div>
@@ -1106,7 +1106,7 @@ function Setup(props: {
             <h3>What happens to your files</h3>
             <p>
               Uploaded audio is deleted after six hours. Reference pictures never leave your browser
-              — only the colours pulled out of them are sent. The finished video stays on your
+              and only the colours pulled out of them are sent. The finished video stays on your
               machine. Full detail is in the{' '}
               <a href="/privacy.html">Privacy Policy</a> and{' '}
               <a href="/terms.html">Terms of Service</a>.
@@ -1137,7 +1137,7 @@ function Working(
       <div className="stack" style={{ justifyItems: 'center', gap: 14 }}>
         <h2>
           {uploading
-            ? `Uploading — ${Math.round(uploadFraction * 100)}%`
+            ? `Uploading ${Math.round(uploadFraction * 100)}%`
             : job?.queuePosition
               ? job.message
               : job?.message ?? 'Working…'}
@@ -1160,7 +1160,7 @@ function Working(
 
         <p className="hint" style={{ maxWidth: '46ch' }}>
           It is matching every word in your lyrics to the vocal in the recording. This is the slow
-          part — the video itself is drawn in your browser afterwards and is much faster.
+          part. The video itself is drawn in your browser afterwards and is much faster.
         </p>
 
         <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>

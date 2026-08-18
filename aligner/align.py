@@ -78,7 +78,7 @@ def run(audio_path: str, lyrics_text: str, model: str, threads: int,
 
     parsed = lyrics_mod.parse(lyrics_text)
     if not parsed.words:
-        raise ValueError("No lyrics found — the text was empty once markers were removed.")
+        raise ValueError("No lyrics found. The text was empty once markers were removed.")
 
     if model == "auto":
         # English-only is roughly twice as fast on this hardware and scores

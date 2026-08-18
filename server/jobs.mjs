@@ -226,7 +226,7 @@ function updateQueuePositions() {
 
 function queueMessage(job) {
   if (!job.queuePosition || job.queuePosition <= 1) return 'Next in line…';
-  return `Waiting — ${job.queuePosition - 1} song${job.queuePosition === 2 ? '' : 's'} ahead`;
+  return `Waiting: ${job.queuePosition - 1} song${job.queuePosition === 2 ? '' : 's'} ahead`;
 }
 
 async function drain() {
@@ -442,8 +442,8 @@ export function rateLimit(ip, signedIn = false) {
     const wait = Math.ceil((hour - (now - history[0])) / 60000);
     const error = badRequest(signedIn
       ? `That's ${cap} songs this hour. Try again in ${wait} minutes.`
-      : `That's ${cap} songs this hour without an account. Sign in to do more — `
-        + `it's free — or try again in ${wait} minutes.`);
+      : `That's ${cap} songs this hour without an account. Sign in to do more, `
+        + `it's free, or try again in ${wait} minutes.`);
     error.status = 429;
     throw error;
   }

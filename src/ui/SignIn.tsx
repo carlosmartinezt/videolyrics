@@ -77,7 +77,7 @@ export function SignIn({ config, reason, onClose, onStubSignedIn }: Props) {
               device and you will come straight back here.
             </Notice>
             <p className="hint">
-              Nothing you have done is lost — your song stays in this tab while you fetch it.
+              Nothing you have done is lost. Your song is saved in this browser and will be waiting when you get back.
             </p>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
           </>
@@ -86,7 +86,7 @@ export function SignIn({ config, reason, onClose, onStubSignedIn }: Props) {
             <h2>{reason ?? 'Sign in to download'}</h2>
             <p className="hint">
               Free, and it takes one click. An account gets you{' '}
-              <strong>{config.auth?.freeCredits ?? 5} videos a month</strong> — a video stays yours
+              <strong>{config.auth?.freeCredits ?? 5} videos a month</strong>, and a video stays yours
               once unlocked, so you can re-export it at any size or restyle it as often as you like
               without spending another.
             </p>

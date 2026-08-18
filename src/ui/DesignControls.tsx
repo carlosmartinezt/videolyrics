@@ -15,12 +15,12 @@ import type { Plan, Prefs, ServerConfig, LyricMode } from '../types';
 import { CardHead } from './bits';
 
 export const LYRIC_MODE_LABELS: Record<LyricMode, string> = {
-  karaoke: 'Karaoke — the word fills as it is sung',
-  wordPop: 'Word by word — each word arrives on cue',
-  lineFade: 'Line fade — whole lines, calm',
-  cascade: 'Cascade — a scrolling column',
-  hero: 'Hero — one big word at a time',
-  bloom: 'Bloom — words swell in and dissolve, cinematic',
+  karaoke: 'Karaoke: the word fills as it is sung',
+  wordPop: 'Word by word: each word arrives on cue',
+  lineFade: 'Line fade: whole lines, calm',
+  cascade: 'Cascade: a scrolling column',
+  hero: 'Hero: one big word at a time',
+  bloom: 'Bloom: words swell in and dissolve, cinematic',
 };
 
 interface Props {
@@ -180,7 +180,7 @@ export function DesignControls({ config, prefs, onPrefs, plan }: Props) {
               value={prefs.font ?? ''}
               onChange={(event) => onPrefs({ font: event.target.value || undefined })}
             >
-              <option value="">{autoFontName ? `Auto — ${autoFontName}` : 'Auto — chosen from the song'}</option>
+              <option value="">{autoFontName ? `Auto: ${autoFontName}` : 'Auto: chosen from the song'}</option>
               {config.fonts.map((font) => (
                 <option key={font.id} value={font.id}>{font.name}</option>
               ))}
@@ -196,7 +196,7 @@ export function DesignControls({ config, prefs, onPrefs, plan }: Props) {
               onChange={(event) => onPrefs({ lyricMode: (event.target.value || undefined) as LyricMode })}
             >
               <option value="">
-                {plan ? `Auto — ${LYRIC_MODE_LABELS[plan.lyrics.mode]}` : 'Auto — chosen to suit the look'}
+                {plan ? `Auto: ${LYRIC_MODE_LABELS[plan.lyrics.mode]}` : 'Auto: chosen to suit the look'}
               </option>
               {lyricModes.map((mode) => (
                 <option key={mode} value={mode}>{LYRIC_MODE_LABELS[mode]}</option>

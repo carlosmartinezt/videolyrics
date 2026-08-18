@@ -113,7 +113,7 @@ export function uploadAudio(
       if (xhr.status >= 200 && xhr.status < 300) resolve(payload);
       else reject(new ApiError(payload?.error || `Upload failed (${xhr.status})`, xhr.status));
     };
-    xhr.onerror = () => reject(new ApiError('Upload failed — check your connection.', 0));
+    xhr.onerror = () => reject(new ApiError('Upload failed. Check your connection.', 0));
     xhr.onabort = () => reject(new DOMException('Upload cancelled.', 'AbortError'));
 
     signal?.addEventListener('abort', () => xhr.abort(), { once: true });

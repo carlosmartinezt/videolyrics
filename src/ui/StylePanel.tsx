@@ -41,7 +41,7 @@ export function StylePanel({ config, plan, prefs, busy, onPrefs, onPlan, onRedes
               onChange={(event) => onPlan({ aspect: event.target.value })}
             >
               {Object.entries(config.aspects).map(([key, value]) => (
-                <option key={key} value={key}>{key} · {value.name} — {value.note}</option>
+                <option key={key} value={key}>{key} · {value.name} ({value.note})</option>
               ))}
             </select>
           </div>
@@ -92,7 +92,7 @@ export function StylePanel({ config, plan, prefs, busy, onPrefs, onPlan, onRedes
           </p>
         ) : (
           <Notice tone="info">
-            The art director is running on rules only — no model key is configured, so the design comes
+            The art director is running on rules only. No model key is configured, so the design comes
             from the audio analysis and your choices.
           </Notice>
         )}

@@ -97,7 +97,7 @@ export const TEMPLATES = [
   {
     id: 'spectrum',
     name: 'Spectrum',
-    blurb: 'The song draws itself — bars, rings and waveforms behind the words.',
+    blurb: 'The song draws itself: bars, rings and waveforms behind the words.',
     moods: ['electronic', 'instrumental', 'modern', 'cold', 'expansive', 'euphoric'],
     lyricModes: ['karaoke', 'lineFade', 'wordPop'],
     defaultLyricMode: 'karaoke',
