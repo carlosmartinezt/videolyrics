@@ -251,8 +251,17 @@ export function ExportDialog({
             />
             <div className="row">
               <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>
-              <a className="btn btn-primary row-end" href={phase.url} download={filename}>
-                Download {filename}
+              {/* The label stays fixed. The generated name is long enough to
+                  wrap onto two lines and turn the primary action into a
+                  paragraph; it still governs what lands in the downloads
+                  folder, via the download attribute. */}
+              <a
+                className="btn btn-primary row-end"
+                href={phase.url}
+                download={filename}
+                title={filename}
+              >
+                Download MP4
               </a>
             </div>
           </>
