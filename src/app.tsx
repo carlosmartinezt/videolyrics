@@ -896,6 +896,54 @@ function Setup(props: {
           </p>
         </div>
       </div>
+
+      {/* Google's OAuth branding review rejected this app three times over for
+          a home page that never said what the app was called, what it did, or
+          why it asked to sign in. All three answers live here, in the name the
+          consent screen uses. */}
+      <section className="about" id="about">
+        <h2>About Video Lyrics</h2>
+        <div className="about-grid">
+          <div>
+            <h3>What it is</h3>
+            <p>
+              Video Lyrics (videolyrics.org) is a free web app that turns a song and its lyrics into
+              a finished lyric video. You upload an audio file and paste the words; it listens to the
+              vocal, works out the moment each individual word is sung, reads the lyrics for mood,
+              designs the video around them, and hands you an MP4.
+            </p>
+          </div>
+          <div>
+            <h3>How it works</h3>
+            <p>
+              The timing is done by forced alignment against the lyrics you provide, so the words
+              cannot come out in the wrong order the way automatic transcription does on singing.
+              The video itself is drawn and encoded by your own browser — it is never rendered on,
+              or uploaded to, our server.
+            </p>
+          </div>
+          <div>
+            <h3>Why it asks you to sign in</h3>
+            <p>
+              Anyone can upload a song and preview the result without an account. An account is
+              needed only to download the MP4, because each person gets five free videos a month and
+              we need somewhere to count them. Signing in with Google tells us your name, email
+              address and profile picture, and we use the email address purely to identify your
+              account and its remaining credits. Nothing is sold or shared for advertising.
+            </p>
+          </div>
+          <div>
+            <h3>What happens to your files</h3>
+            <p>
+              Uploaded audio is deleted after six hours. Reference pictures never leave your browser
+              — only the colours pulled out of them are sent. The finished video stays on your
+              machine. Full detail is in the{' '}
+              <a href="/privacy.html">Privacy Policy</a> and{' '}
+              <a href="/terms.html">Terms of Service</a>.
+            </p>
+          </div>
+        </div>
+      </section>
     </>
   );
 }

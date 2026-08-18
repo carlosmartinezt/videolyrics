@@ -877,3 +877,22 @@ footer.site a:hover { color: var(--text); border-color: var(--accent); }
 .legal-links { margin-top: 10px; display: flex; gap: 18px; flex-wrap: wrap; }
 .legal-links a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
 .legal-links a:hover { color: var(--fg); border-bottom-color: var(--accent-line); }
+
+/* --------------------------------- about ---------------------------------- */
+
+.about {
+  border-top: 1px solid var(--line-soft);
+  padding: 40px 0 8px;
+  margin-top: 8px;
+}
+
+.about h2 { font-size: 21px; letter-spacing: -0.01em; margin: 0 0 20px; }
+.about h3 { font-size: 15px; margin: 0 0 6px; color: var(--fg); }
+.about p { margin: 0; color: var(--muted); font-size: 14.5px; line-height: 1.65; max-width: 62ch; }
+.about a { color: var(--accent); }
+
+.about-grid {
+  display: grid;
+  gap: 26px 44px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
