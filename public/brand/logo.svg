@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="videolyrics">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#171b2e"/>
+      <stop offset="0.55" stop-color="#0c0e17"/>
+      <stop offset="1" stop-color="#1d1539"/>
+    </linearGradient>
+    <linearGradient id="sweep" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7c8cff"/>
+      <stop offset="1" stop-color="#b07cff"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.42" cy="0.38" r="0.6">
+      <stop offset="0" stop-color="#7c8cff" stop-opacity="0.40"/>
+      <stop offset="1" stop-color="#7c8cff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#glow)"/>
+
+  <!-- Two lyric lines, not three. At the 120px Google actually renders this
+       at, a third bar and the play mark ran into each other and the whole
+       thing turned to mush. The sweep on the lower bar is the idea worth
+       keeping: this app knows which word is being sung right now. -->
+  <rect x="96" y="150" width="196" height="34" rx="17" fill="#ffffff" opacity="0.30"/>
+
+  <rect x="96" y="232" width="320" height="46" rx="23" fill="#ffffff" opacity="0.14"/>
+  <clipPath id="half"><rect x="96" y="232" width="188" height="46" rx="23"/></clipPath>
+  <rect x="96" y="232" width="320" height="46" rx="23" fill="url(#sweep)" clip-path="url(#half)"/>
+
+  <!-- Play mark, given its own row and enough size to survive downscaling. -->
+  <path d="M96 330 L96 430 L188 380 Z" fill="#ffffff" opacity="0.94"/>
+</svg>

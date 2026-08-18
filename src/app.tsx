@@ -573,8 +573,17 @@ export function App() {
       </main>
 
       <footer className="site shell">
-        Songs and lyrics stay yours. Uploads are deleted after {config.limits.retentionHours} hours,
-        reference pictures never leave your browser, and the video is encoded on your own machine.
+        <p>
+          Songs and lyrics stay yours. Uploads are deleted after {config.limits.retentionHours} hours,
+          reference pictures never leave your browser, and the video is encoded on your own machine.
+        </p>
+        {/* Plain anchors, not router links: these are static pages served by
+            Caddy, and Google's OAuth consent screen requires both to be
+            reachable at a stable URL on this domain. */}
+        <p className="legal-links">
+          <a href="/privacy.html">Privacy Policy</a>
+          <a href="/terms.html">Terms of Service</a>
+        </p>
       </footer>
 
       {exporting && scene && audioBuffer && plan && file && (

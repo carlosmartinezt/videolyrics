@@ -21,6 +21,33 @@ from dataclasses import dataclass, field
 # out of the alignment stream and kept as structure hints for the director.
 SECTION_RE = re.compile(r"^\s*[\[\{\(]\s*([^\]\}\)]{1,40})\s*[\]\}\)]\s*$")
 
+# The same markers written without brackets, which is how people type them by
+# hand and how several lyric sites export: "Verse 1 - male voice", "Chorus:",
+# "Bridge (x2)", "Intro".
+#
+# The shape is deliberately strict, because these words are also ordinary
+# English and a greedy rule would silently delete real lines. A match needs the
+# section word to be the *whole* line apart from an optional number and an
+# optional annotation introduced by punctuation:
+#
+#   "Verse 1 - male voice"   marker    word, number, dash-introduced annotation
+#   "Chorus:"                marker    word, colon
+#   "Break my heart again"   lyric     no separator after the word
+#   "Hook, line and sinker"  lyric     comma is deliberately not a separator
+#
+SECTION_WORDS = (
+    "verse", "chorus", "pre-?chorus", "post-?chorus", "bridge", "intro", "outro",
+    "hook", "refrain", "interlude", "break(?:down)?", "instrumental", "solo",
+    "coda", "vamp", "tag", "drop", "spoken", "ad-?libs?", "chant", "chorus\\s*repeat",
+)
+BARE_SECTION_RE = re.compile(
+    r"^\s*(?:" + "|".join(SECTION_WORDS) + r")"     # the word itself
+    r"(?:\s*(?:no\.?|#)?\s*\d+)?"                  # "2", "no. 2", "#2"
+    r"(?:\s*[x×]\s*\d+)?"                          # "x2"
+    r"\s*(?:[-–—:|/(\[].*)?$",                      # ": male voice", "(x2)"
+    re.IGNORECASE,
+)
+
 # Repeat suffixes — "(x2)", "[2x]" — trailing a real lyric line.
 REPEAT_RE = re.compile(r"\s*[\[\(]\s*[x×]?\s*\d+\s*[x×]?\s*[\]\)]\s*$", re.IGNORECASE)
 
@@ -210,6 +237,16 @@ def parse(raw_text: str) -> ParsedLyrics:
             continue
 
         marker = SECTION_RE.match(stripped)
+        # A bare marker carries no brackets to strip, so the whole line is the
+        # label. Length-capped as a last guard: a genuine lyric that happens to
+        # open with one of these words and a dash is still far more likely to
+        # be long than a section heading is.
+        if not marker and len(stripped) <= 60 and BARE_SECTION_RE.match(stripped):
+            current_label = stripped
+            explicit_label = True
+            pending_stanza_break = True
+            ensure_section(current_label, True)
+            continue
         if marker:
             current_label = marker.group(1).strip()
             explicit_label = True

@@ -217,3 +217,32 @@ class TestQuality(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BareSectionMarkers(unittest.TestCase):
+    """Section headings people type without brackets."""
+
+    def sung(self, text: str) -> str:
+        return " ".join(w.text for w in L.parse(text + "\nreal lyric line here").words)
+
+    def test_bare_markers_are_lifted_out(self):
+        for marker in [
+            "Verse 1 - male voice", "Chorus:", "Bridge (x2)", "Intro",
+            "Pre-Chorus", "Verse 2", "Outro", "Instrumental", "Verse no. 3",
+        ]:
+            with self.subTest(marker=marker):
+                self.assertNotIn(marker, self.sung(marker))
+
+    def test_real_lyrics_that_start_with_a_section_word_survive(self):
+        # The failure this guards against is silent: an over-eager rule deletes
+        # a line and the video is simply missing it, with nothing to explain why.
+        for line in [
+            "Break my heart again",
+            "Hook, line and sinker",
+            "Bridge over troubled water",
+            "Solo dancing in the dark",
+            "Chorus of angels sing tonight",
+            "Tag along with me tonight",
+        ]:
+            with self.subTest(line=line):
+                self.assertIn(line.split()[0], self.sung(line))

@@ -873,3 +873,7 @@ footer.site a:hover { color: var(--text); border-color: var(--accent); }
 @media (max-width: 620px) {
   .credits span { display: none; }
 }
+
+.legal-links { margin-top: 10px; display: flex; gap: 18px; flex-wrap: wrap; }
+.legal-links a { color: var(--muted); text-decoration: none; border-bottom: 1px solid var(--line); }
+.legal-links a:hover { color: var(--fg); border-bottom-color: var(--accent-line); }
