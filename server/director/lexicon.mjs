@@ -110,3 +110,74 @@ export function readLyrics(text) {
     tags: [...tags.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([t]) => t),
   };
 }
+
+/* --------------------------- chosen moods -------------------------------- */
+
+/**
+ * What each word in the mood vocabulary implies, as energy / warmth /
+ * brightness on the same 0..1 scales the director already uses.
+ *
+ * This exists because picking a mood used to change only the *word list*,
+ * which fed template and palette scoring and nothing else. Force a template
+ * and a palette and the mood then had no effect whatsoever — "aggressive" and
+ * "tender" produced identical frames. These numbers give a chosen mood a route
+ * to the things you can actually see: highlight style, motion, grain, vignette
+ * and cue intensity.
+ */
+export const MOOD_AFFECT = {
+  acoustic:      { e: 0.35, w: 0.62, b: 0.55 },
+  aggressive:    { e: 0.95, w: 0.55, b: 0.40 },
+  ambient:       { e: 0.18, w: 0.45, b: 0.48 },
+  bright:        { e: 0.62, w: 0.60, b: 0.92 },
+  calm:          { e: 0.15, w: 0.55, b: 0.60 },
+  cinematic:     { e: 0.55, w: 0.45, b: 0.40 },
+  classic:       { e: 0.40, w: 0.55, b: 0.55 },
+  cold:          { e: 0.35, w: 0.12, b: 0.45 },
+  dark:          { e: 0.45, w: 0.30, b: 0.12 },
+  defiant:       { e: 0.82, w: 0.45, b: 0.42 },
+  dramatic:      { e: 0.72, w: 0.45, b: 0.35 },
+  dreamy:        { e: 0.25, w: 0.55, b: 0.62 },
+  electronic:    { e: 0.72, w: 0.35, b: 0.50 },
+  elegant:       { e: 0.35, w: 0.50, b: 0.58 },
+  energetic:     { e: 0.90, w: 0.60, b: 0.70 },
+  ethereal:      { e: 0.22, w: 0.48, b: 0.78 },
+  euphoric:      { e: 0.88, w: 0.68, b: 0.82 },
+  expansive:     { e: 0.55, w: 0.50, b: 0.65 },
+  flowing:       { e: 0.45, w: 0.55, b: 0.58 },
+  folk:          { e: 0.38, w: 0.68, b: 0.58 },
+  futuristic:    { e: 0.68, w: 0.30, b: 0.55 },
+  grand:         { e: 0.70, w: 0.50, b: 0.55 },
+  gritty:        { e: 0.75, w: 0.48, b: 0.30 },
+  grounded:      { e: 0.38, w: 0.58, b: 0.45 },
+  happy:         { e: 0.75, w: 0.78, b: 0.85 },
+  hopeful:       { e: 0.55, w: 0.68, b: 0.78 },
+  intense:       { e: 0.88, w: 0.45, b: 0.32 },
+  introspective: { e: 0.25, w: 0.45, b: 0.38 },
+  lonely:        { e: 0.22, w: 0.35, b: 0.28 },
+  melancholy:    { e: 0.25, w: 0.38, b: 0.30 },
+  minimal:       { e: 0.30, w: 0.45, b: 0.55 },
+  modern:        { e: 0.58, w: 0.45, b: 0.58 },
+  nostalgic:     { e: 0.35, w: 0.68, b: 0.45 },
+  organic:       { e: 0.40, w: 0.68, b: 0.55 },
+  passionate:    { e: 0.80, w: 0.75, b: 0.50 },
+  playful:       { e: 0.78, w: 0.70, b: 0.78 },
+  raw:           { e: 0.78, w: 0.50, b: 0.35 },
+  rock:          { e: 0.85, w: 0.55, b: 0.42 },
+  romantic:      { e: 0.42, w: 0.78, b: 0.55 },
+  serious:       { e: 0.40, w: 0.38, b: 0.35 },
+  soft:          { e: 0.22, w: 0.62, b: 0.68 },
+  soulful:       { e: 0.50, w: 0.72, b: 0.48 },
+  summer:        { e: 0.68, w: 0.85, b: 0.88 },
+  tender:        { e: 0.28, w: 0.72, b: 0.62 },
+  triumphant:    { e: 0.85, w: 0.65, b: 0.72 },
+  uplifting:     { e: 0.75, w: 0.70, b: 0.82 },
+  vintage:       { e: 0.40, w: 0.68, b: 0.42 },
+  warm:          { e: 0.45, w: 0.88, b: 0.62 },
+};
+
+/**
+ * How far a chosen mood pulls the reading away from what the audio says.
+ * Not all the way: asking for "aggressive" over a slow ballad should make it
+ * harsher, not pretend it is fast.
+ */
+export const MOOD_PULL = 0.5;

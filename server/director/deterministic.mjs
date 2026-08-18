@@ -13,7 +13,7 @@
 import { TEMPLATES, TEMPLATES_BY_ID, FONTS_BY_ID } from '../../shared/templates.mjs';
 import { PALETTES, PALETTES_BY_ID, scorePalette, hexToRgb, rgbToHsl } from '../../shared/palettes.mjs';
 import { defaultPlan, normalisePlan } from '../../shared/plan.mjs';
-import { readLyrics } from './lexicon.mjs';
+import { readLyrics, MOOD_AFFECT, MOOD_PULL } from './lexicon.mjs';
 
 /* ------------------------------- mood ----------------------------------- */
 
@@ -37,15 +37,35 @@ export function deriveMood({ audio, lyricsText, userMoods = [] }) {
   const onsetDensity = clamp01((audio.onsets?.length || 0) / Math.max(1, audio.duration) / 4);
   const musicalEnergy = clamp01(tempoEnergy * 0.45 + meanLoud * 0.3 + onsetDensity * 0.25);
 
-  const energy = clamp01(musicalEnergy * 0.7 + read.arousal * 0.3 * read.confidence + musicalEnergy * 0.3 * (1 - read.confidence));
+  const musicEnergy = clamp01(musicalEnergy * 0.7 + read.arousal * 0.3 * read.confidence + musicalEnergy * 0.3 * (1 - read.confidence));
   const valence = read.confidence > 0.15
     ? read.valence
     : (audio.mode === 'major' ? 0.25 : -0.25) * (audio.key_confidence ?? 0.5);
 
-  const warmth = clamp01(0.5 + valence * 0.35 + (audio.mode === 'major' ? 0.1 : -0.1));
-  const brightness = clamp01(meanBright * 0.6 + (valence + 1) / 2 * 0.4);
+  const musicWarmth = clamp01(0.5 + valence * 0.35 + (audio.mode === 'major' ? 0.1 : -0.1));
+  const musicBrightness = clamp01(meanBright * 0.6 + (valence + 1) / 2 * 0.4);
 
   const words = new Set(userMoods.map((w) => String(w).toLowerCase().trim()).filter(Boolean));
+
+  // A chosen mood has to reach the picture, not just the word list. Without
+  // this it only fed template and palette scoring, so anyone who had already
+  // picked those two got no effect at all from choosing a mood — the frames
+  // came out identical. Pull the three readings toward the average of what was
+  // asked for, part of the way, so the audio still has a say.
+  const chosen = [...words].map((w) => MOOD_AFFECT[w]).filter(Boolean);
+  let energy = musicEnergy;
+  let warmth = musicWarmth;
+  let brightness = musicBrightness;
+  if (chosen.length) {
+    const want = {
+      e: mean(chosen.map((c) => c.e)),
+      w: mean(chosen.map((c) => c.w)),
+      b: mean(chosen.map((c) => c.b)),
+    };
+    energy = clamp01(energy + (want.e - energy) * MOOD_PULL);
+    warmth = clamp01(warmth + (want.w - warmth) * MOOD_PULL);
+    brightness = clamp01(brightness + (want.b - brightness) * MOOD_PULL);
+  }
 
   // Only add derived words when the user gave us little to go on, so their
   // stated intent is never diluted by our guesswork.
