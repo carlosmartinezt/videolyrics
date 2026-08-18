@@ -1,16 +1,18 @@
 /**
- * The style panel.
+ * The style panel, shown beside the preview once there is something to look at.
  *
  * Two kinds of control, kept visibly apart: the ones that change the design
  * (and so need the director to run again) and the ones that only change the
  * output file (aspect, resolution, frame rate), which apply immediately
  * because they never touch the plan's design decisions.
+ *
+ * The design controls themselves live in DesignControls, because the setup
+ * screen offers the same ones before the first generate.
  */
 
-import { useState } from 'react';
-
-import type { Plan, Prefs, ServerConfig, LyricMode } from '../types';
+import type { Plan, Prefs, ServerConfig } from '../types';
 import { CardHead, Notice } from './bits';
+import { DesignControls } from './DesignControls';
 
 interface Props {
   config: ServerConfig;
@@ -22,157 +24,10 @@ interface Props {
   onRedesign: () => void;
 }
 
-const LYRIC_MODE_LABELS: Record<LyricMode, string> = {
-  karaoke: 'Karaoke — the word fills as it is sung',
-  wordPop: 'Word by word — each word arrives on cue',
-  lineFade: 'Line fade — whole lines, calm',
-  cascade: 'Cascade — a scrolling column',
-  hero: 'Hero — one big word at a time',
-};
-
 export function StylePanel({ config, plan, prefs, busy, onPrefs, onPlan, onRedesign }: Props) {
-  const [showAll, setShowAll] = useState(false);
-
-  const template = config.templates.find((t) => t.id === plan.template);
-  const moodSet = new Set(prefs.moods ?? []);
-
-  const toggleMood = (mood: string) => {
-    const next = new Set(moodSet);
-    if (next.has(mood)) next.delete(mood);
-    else if (next.size < 5) next.add(mood);
-    onPrefs({ moods: [...next] });
-  };
-
-  const visibleMoods = showAll ? config.moods : config.moods.slice(0, 14);
-
   return (
     <div className="stack">
-      <section className="card">
-        <CardHead title="Mood" aside={`${moodSet.size}/5`} />
-        <p className="hint" style={{ marginBottom: 12 }}>
-          Pick up to five. Leave it empty and the mood is read from the music and the words.
-        </p>
-        <div className="chips">
-          {visibleMoods.map((mood) => (
-            <button
-              key={mood}
-              type="button"
-              className="chip"
-              aria-pressed={moodSet.has(mood)}
-              onClick={() => toggleMood(mood)}
-            >
-              {mood}
-            </button>
-          ))}
-          {!showAll && config.moods.length > 14 && (
-            <button type="button" className="chip" onClick={() => setShowAll(true)}>
-              more…
-            </button>
-          )}
-        </div>
-      </section>
-
-      <section className="card">
-        <CardHead title="Look" />
-        <div className="options">
-          <button
-            type="button"
-            className="option"
-            aria-pressed={!prefs.template}
-            onClick={() => onPrefs({ template: undefined })}
-          >
-            <span className="name">Let it choose</span>
-            <span className="desc">Picks the template that fits the song.</span>
-          </button>
-          {config.templates.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className="option"
-              aria-pressed={prefs.template === item.id}
-              onClick={() => onPrefs({ template: item.id })}
-            >
-              <span className="name">{item.name}</span>
-              <span className="desc">{item.blurb}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="card">
-        <CardHead title="Colour" />
-        <div className="swatches">
-          <button
-            type="button"
-            className="swatch"
-            aria-pressed={!prefs.palette}
-            onClick={() => onPrefs({ palette: undefined })}
-          >
-            <span
-              className="strip"
-              style={{ background: `linear-gradient(90deg, ${plan.palette.bg[1]}, ${plan.palette.accent})` }}
-            />
-            <span className="label">Auto</span>
-          </button>
-          {config.palettes.map((palette) => (
-            <button
-              key={palette.id}
-              type="button"
-              className="swatch"
-              aria-pressed={prefs.palette === palette.id}
-              onClick={() => onPrefs({ palette: palette.id })}
-              title={palette.moods.join(', ')}
-            >
-              <span
-                className="strip"
-                style={{
-                  background:
-                    `linear-gradient(90deg, ${palette.bg[0]} 0%, ${palette.bg[1]} 45%, ${palette.accent} 78%, ${palette.accent2} 100%)`,
-                }}
-              />
-              <span className="label">{palette.name}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="card">
-        <CardHead title="Type" />
-        <div className="stack-sm">
-          <div className="field">
-            <label htmlFor="font">Typeface</label>
-            <select
-              id="font"
-              className="select"
-              value={prefs.font ?? ''}
-              onChange={(event) => onPrefs({ font: event.target.value || undefined })}
-            >
-              <option value="">Auto — {config.fonts.find((f) => f.id === plan.typography.font)?.name}</option>
-              {config.fonts.map((font) => (
-                <option key={font.id} value={font.id}>{font.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="mode">How the words appear</label>
-            <select
-              id="mode"
-              className="select"
-              value={prefs.lyricMode ?? ''}
-              onChange={(event) => onPrefs({ lyricMode: (event.target.value || undefined) as LyricMode })}
-            >
-              <option value="">Auto — {LYRIC_MODE_LABELS[plan.lyrics.mode]}</option>
-              {(template?.lyricModes ?? []).map((mode) => (
-                <option key={mode} value={mode}>{LYRIC_MODE_LABELS[mode]}</option>
-              ))}
-            </select>
-            {template && (
-              <span className="hint">Modes available depend on the look. {template.name} supports {template.lyricModes.length}.</span>
-            )}
-          </div>
-        </div>
-      </section>
+      <DesignControls config={config} prefs={prefs} onPrefs={onPrefs} plan={plan} />
 
       <section className="card">
         <CardHead title="Output" />

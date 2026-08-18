@@ -28,6 +28,7 @@ import type { Scene } from './render/engine';
 
 import { CardHead, formatBytes, formatTime, Notice, Spinner } from './ui/bits';
 import { CueSheet } from './ui/CueSheet';
+import { DesignControls } from './ui/DesignControls';
 import { ExportDialog } from './ui/ExportDialog';
 import { HeroCanvas } from './ui/HeroCanvas';
 import { Preview, type PreviewHandle } from './ui/Preview';
@@ -455,6 +456,12 @@ export function App() {
         )}
       </header>
 
+      {dragging && screen === 'setup' && (
+        <div className="drag-veil" aria-hidden="true">
+          <strong>Drop the song</strong>
+        </div>
+      )}
+
       <main className="shell">
         {screen === 'setup' && (
           <Setup
@@ -466,12 +473,13 @@ export function App() {
             title={title}
             artist={artist}
             references={references}
-            dragging={dragging}
+            prefs={prefs}
             error={error}
             onFile={acceptAudio}
             onLyrics={setLyrics}
             onTitle={setTitle}
             onArtist={setArtist}
+            onPrefs={(patch) => setPrefs((existing) => ({ ...existing, ...patch }))}
             onAddReferences={addReferences}
             onRemoveReference={removeReference}
             onGenerate={generate}
@@ -606,19 +614,20 @@ function Setup(props: {
   title: string;
   artist: string;
   references: Reference[];
-  dragging: boolean;
+  prefs: Prefs;
   error: string | null;
   onFile: (file: File) => void;
   onLyrics: (value: string) => void;
   onTitle: (value: string) => void;
   onArtist: (value: string) => void;
+  onPrefs: (patch: Prefs) => void;
   onAddReferences: (files: File[]) => void;
   onRemoveReference: (id: string) => void;
   onGenerate: () => void;
 }) {
   const {
-    config, support, file, audioBuffer, lyrics, title, artist, references,
-    dragging, error, onFile, onLyrics, onTitle, onArtist,
+    config, support, file, audioBuffer, lyrics, title, artist, references, prefs,
+    error, onFile, onLyrics, onTitle, onArtist, onPrefs,
     onAddReferences, onRemoveReference, onGenerate,
   } = props;
 
@@ -635,20 +644,51 @@ function Setup(props: {
           <p className="eyebrow" style={{ marginBottom: 14 }}>Lyric videos, made by listening</p>
           <h1>Give it a song.<br />Get back a <em>video</em>.</h1>
           <p className="hero-lede">
-            Upload the track and paste the words. It listens to the vocal, works out when every
+            Upload the track and paste the lyrics. It listens to the vocal, works out when every
             single word is sung, reads the lyrics for mood, and designs the whole thing — then your
             browser encodes the MP4.
           </p>
-          <div className="hero-actions">
-            <button
-              type="button"
-              className="btn btn-primary btn-lg"
-              onClick={() => audioInput.current?.click()}
-            >
-              Choose a song
-            </button>
-            <span className="hint">or drop a file anywhere on this page</span>
-          </div>
+
+          {/* The only way in. There was a second drop target below this button,
+              which asked people to make the same decision twice; dropping a
+              file anywhere on the page still works and always did. */}
+          <input
+            ref={audioInput}
+            type="file"
+            accept={`audio/*,${AUDIO_TYPES.join(',')}`}
+            className="sr-only"
+            onChange={(event) => {
+              const picked = event.target.files?.[0];
+              if (picked) onFile(picked);
+              event.target.value = '';
+            }}
+          />
+          {file ? (
+            <div className="stack-sm" style={{ maxWidth: 460 }}>
+              <div className="file-row">
+                <span className="name">{file.name}</span>
+                <span className="meta mono hint">
+                  {formatBytes(file.size)}
+                  {audioBuffer ? ` · ${formatTime(audioBuffer.duration)}` : ' · reading…'}
+                </span>
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => audioInput.current?.click()}>
+                Choose a different song
+              </button>
+            </div>
+          ) : (
+            <div className="hero-actions">
+              <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                onClick={() => audioInput.current?.click()}
+              >
+                Choose a song
+              </button>
+              <span className="hint">or drop a file anywhere on this page</span>
+            </div>
+          )}
+
           <div className="hero-facts">
             <span><b>Word-level</b> timing, not line-level</span>
             <span><b>{config.templates.length}</b> looks</span>
@@ -659,54 +699,17 @@ function Setup(props: {
         <HeroCanvas fonts={config.fonts} label="Live — not a recording" />
       </section>
 
+      {/* Left is what the video is made of, right is how it looks. The design
+          controls are the same component the studio uses, offered here so the
+          first render is already the one you wanted — regenerating to change a
+          font costs a minute and a credit's worth of patience. */}
       <div className="composer">
-        <div className="stack">
-          <section className="card">
-            <CardHead step={1} done={Boolean(file)} title="The song" />
-            <input
-              ref={audioInput}
-              type="file"
-              accept={`audio/*,${AUDIO_TYPES.join(',')}`}
-              className="sr-only"
-              onChange={(event) => {
-                const picked = event.target.files?.[0];
-                if (picked) onFile(picked);
-                event.target.value = '';
-              }}
-            />
-            {file ? (
-              <div className="stack-sm">
-                <div className="file-row">
-                  <span className="name">{file.name}</span>
-                  <span className="meta mono hint">
-                    {formatBytes(file.size)}
-                    {audioBuffer ? ` · ${formatTime(audioBuffer.duration)}` : ' · reading…'}
-                  </span>
-                </div>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => audioInput.current?.click()}>
-                  Choose a different file
-                </button>
-              </div>
-            ) : (
-              <div
-                className="drop"
-                data-active={dragging}
-                onClick={() => audioInput.current?.click()}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') audioInput.current?.click(); }}
-              >
-                <strong>Drop an audio file</strong>
-                <span className="hint">MP3, M4A, WAV, FLAC, OGG — up to {formatBytes(config.limits.maxAudioBytes)}</span>
-              </div>
-            )}
-          </section>
-
-          <section className="card">
+        <div className="composer-main">
+          <section className="card card-grow">
             <CardHead
-              step={2}
+              step={1}
               done={lines > 0}
-              title="The words"
+              title="The lyrics"
               aside={lines ? `${lines} lines` : undefined}
             />
             <textarea
@@ -725,31 +728,31 @@ function Setup(props: {
               Punctuation and capitals are kept exactly as you type them — that is what ends up on screen.
             </p>
           </section>
-        </div>
 
-        <div className="stack">
           <section className="card">
-            <CardHead step={3} title="Optional" />
+            <CardHead title="Details" aside="optional" />
             <div className="stack-sm">
-              <div className="field">
-                <label htmlFor="title">Title card</label>
-                <input
-                  id="title"
-                  className="input"
-                  value={title}
-                  onChange={(event) => onTitle(event.target.value)}
-                  placeholder="Song title"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="artist">Artist</label>
-                <input
-                  id="artist"
-                  className="input"
-                  value={artist}
-                  onChange={(event) => onArtist(event.target.value)}
-                  placeholder="Who made it"
-                />
+              <div className="two-up">
+                <div className="field">
+                  <label htmlFor="title">Title card</label>
+                  <input
+                    id="title"
+                    className="input"
+                    value={title}
+                    onChange={(event) => onTitle(event.target.value)}
+                    placeholder="Song title"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="artist">Artist</label>
+                  <input
+                    id="artist"
+                    className="input"
+                    value={artist}
+                    onChange={(event) => onArtist(event.target.value)}
+                    placeholder="Who made it"
+                  />
+                </div>
               </div>
 
               <div className="field">
@@ -795,6 +798,68 @@ function Setup(props: {
               </div>
             </div>
           </section>
+        </div>
+
+        <div className="stack">
+          <section className="card" style={{ paddingBottom: 14 }}>
+            <CardHead title="How it looks" aside="all optional" />
+            <p className="hint">
+              Every one of these can be left alone — anything you do not set is chosen by reading the
+              music and the lyrics. Set them now and the first video is already yours.
+            </p>
+          </section>
+
+          <DesignControls config={config} prefs={prefs} onPrefs={onPrefs} />
+
+          <section className="card">
+            <CardHead title="Output" />
+            <div className="stack-sm">
+              <div className="field">
+                <label htmlFor="aspect">Shape</label>
+                <select
+                  id="aspect"
+                  className="select"
+                  value={prefs.aspect ?? ''}
+                  onChange={(event) => onPrefs({ aspect: event.target.value || undefined })}
+                >
+                  <option value="">Auto — 16:9 unless the pictures suggest otherwise</option>
+                  {Object.entries(config.aspects).map(([key, value]) => (
+                    <option key={key} value={key}>{key} · {value.name} — {value.note}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="two-up">
+                <div className="field">
+                  <label htmlFor="res">Resolution</label>
+                  <select
+                    id="res"
+                    className="select"
+                    value={prefs.resolution ?? ''}
+                    onChange={(event) => onPrefs({ resolution: event.target.value ? Number(event.target.value) : undefined })}
+                  >
+                    <option value="">Auto</option>
+                    <option value={720}>720p</option>
+                    <option value={1080}>1080p</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="fps">Frame rate</label>
+                  <select
+                    id="fps"
+                    className="select"
+                    value={prefs.fps ?? ''}
+                    onChange={(event) => onPrefs({ fps: event.target.value ? Number(event.target.value) : undefined })}
+                  >
+                    <option value="">Auto</option>
+                    <option value={24}>24 fps</option>
+                    <option value={30}>30 fps</option>
+                    <option value={60}>60 fps</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
 
           {error && <Notice tone="bad">{error}</Notice>}
 
@@ -816,7 +881,9 @@ function Setup(props: {
           <p className="hint">
             {ready
               ? 'Takes about a minute per minute of song. You can watch it work.'
-              : 'Add a song and paste the lyrics to start.'}
+              : file
+                ? 'Paste the lyrics to start.'
+                : 'Choose a song and paste the lyrics to start.'}
           </p>
         </div>
       </div>
