@@ -62,7 +62,7 @@ export interface Alignment {
   segments: Segment[];
 }
 
-export type LyricMode = 'karaoke' | 'wordPop' | 'lineFade' | 'cascade' | 'hero';
+export type LyricMode = 'karaoke' | 'wordPop' | 'lineFade' | 'cascade' | 'hero' | 'bloom';
 export type CueTreatment = 'still' | 'drift' | 'build' | 'surge' | 'strip' | 'bloom' | 'flicker';
 
 export interface Cue {

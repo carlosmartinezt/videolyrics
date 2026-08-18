@@ -355,6 +355,60 @@ function paintWordPop(c: LyricContext, active: ActiveLine): void {
   });
 }
 
+/**
+ * Words swell into place and dissolve one at a time.
+ *
+ * The difference from wordPop is what happens *after* a word is sung. wordPop
+ * holds the whole line and clears it in one go; here each word gets its own
+ * exit, drifting up and fading a beat after its last moment, so the line is
+ * always partly assembling and partly dissolving. That overlap is the thing
+ * that reads as cinematic — nothing in the frame changes state all at once.
+ */
+function paintBloom(c: LyricContext, active: ActiveLine): void {
+  const { palette, time, plan } = c;
+  const anchor = lyricAnchor(plan, c.frame);
+  const size = active.layout.fontSize;
+
+  // A word lingers past its own end so the line never empties abruptly, and
+  // the tail scales with the gap to the next word rather than being fixed:
+  // dense lines dissolve quickly, sparse ones are allowed to hang.
+  const HOLD = 0.9;
+  const FADE = 0.55;
+
+  drawLine(c, active.layout, anchor.x, anchor.y - active.layout.height / 2, (word) => {
+    const since = time - word.start;
+    if (since < -0.4) {
+      return { fill: palette.fg, alpha: 0, sweep: 0, sweepColour: palette.accent, scale: 1, glow: 0, offsetY: 0 };
+    }
+
+    // Swell: a slow ease with a little overshoot, much softer than wordPop's
+    // snap, because the point of this mode is that nothing arrives hard.
+    const entry = easeOutCubic(clamp((since + 0.4) / 0.62));
+    const overshoot = Math.sin(clamp(entry) * Math.PI) * 0.06;
+    const singing = time >= word.start && time < word.end;
+
+    const past = time - (word.end + HOLD);
+    const exit = past <= 0 ? 1 : 1 - smoothstep(0, FADE, past);
+
+    const alpha = clamp(entry * exit);
+    const glow = singing
+      ? 0.45 + c.energy * 0.55
+      : Math.max(0, 0.3 * exit * (1 - smoothstep(0, 0.5, time - word.end)));
+
+    return {
+      fill: singing ? palette.accent : palette.fg,
+      alpha,
+      sweep: 0,
+      sweepColour: palette.accent,
+      // Grows on the way in, and keeps growing a hair on the way out so the
+      // dissolve reads as receding rather than simply switching off.
+      scale: lerp(0.78, 1, entry) + overshoot + (1 - exit) * 0.08,
+      glow,
+      offsetY: (1 - entry) * size * 0.34 - (1 - exit) * size * 0.3,
+    };
+  });
+}
+
 /** The whole line fades in and out as a unit. Calm, cinematic. */
 function paintLineFade(c: LyricContext, active: ActiveLine): void {
   const { palette, time, plan } = c;
@@ -453,10 +507,14 @@ function paintHero(c: LyricContext, active: ActiveLine): void {
     : size;
   setFont(ctx, c.style, fitted);
 
-  const scale = lerp(1.18, 1, entry) * (1 + c.pulse * 0.05);
+  // Grows in, then keeps drifting outward as it leaves. A word that simply
+  // faded at a fixed size read as a slideshow; letting it continue to move
+  // through its own exit is what makes a cut feel like a dissolve.
+  const scale = lerp(1.18, 1, entry) * (1 + (1 - exit) * 0.12) * (1 + c.pulse * 0.05);
+  const drift = (1 - exit) * fitted * 0.16;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.translate(anchor.x, anchor.y + fitted * 0.34);
+  ctx.translate(anchor.x, anchor.y + fitted * 0.34 - drift);
   ctx.scale(scale, scale);
   if (c.energy > 0.4) {
     ctx.shadowColor = rgba(palette.glow, 0.5 * c.energy);
@@ -486,6 +544,7 @@ export function paintLyrics(
       case 'karaoke': paintKaraoke(c, active); break;
       case 'wordPop': paintWordPop(c, active); break;
       case 'hero': paintHero(c, active); break;
+      case 'bloom': paintBloom(c, active); break;
       default: paintLineFade(c, active); break;
     }
   }

@@ -20,6 +20,7 @@ export const LYRIC_MODE_LABELS: Record<LyricMode, string> = {
   lineFade: 'Line fade — whole lines, calm',
   cascade: 'Cascade — a scrolling column',
   hero: 'Hero — one big word at a time',
+  bloom: 'Bloom — words swell in and dissolve, cinematic',
 };
 
 interface Props {
@@ -88,23 +89,40 @@ export function DesignControls({ config, prefs, onPrefs, plan }: Props) {
         <div className="options">
           <button
             type="button"
-            className="option"
+            className="option option-thumbed"
             aria-pressed={!prefs.template}
             onClick={() => onPrefs({ template: undefined })}
           >
-            <span className="name">Let it choose</span>
-            <span className="desc">Picks the template that fits the song.</span>
+            <span className="thumb thumb-auto" aria-hidden="true" />
+            <span className="option-text">
+              <span className="name">Let it choose</span>
+              <span className="desc">Picks the template that fits the song.</span>
+            </span>
           </button>
           {config.templates.map((item) => (
             <button
               key={item.id}
               type="button"
-              className="option"
+              className="option option-thumbed"
               aria-pressed={prefs.template === item.id}
               onClick={() => onPrefs({ template: item.id })}
             >
-              <span className="name">{item.name}</span>
-              <span className="desc">{item.blurb}</span>
+              {/* A still rendered by the real renderer, not a mockup, so it
+                  cannot drift from what the template actually produces.
+                  Regenerate with: node scripts/thumbnails.mjs */}
+              <img
+                className="thumb"
+                src={`/templates/${item.id}.webp`}
+                alt=""
+                width={640}
+                height={360}
+                loading="lazy"
+                decoding="async"
+              />
+              <span className="option-text">
+                <span className="name">{item.name}</span>
+                <span className="desc">{item.blurb}</span>
+              </span>
             </button>
           ))}
         </div>

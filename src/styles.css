@@ -470,6 +470,47 @@ button, input, textarea, select { font: inherit; color: inherit; }
 
 /* ------------------------------- swatches --------------------------------- */
 
+/* A look is a visual thing and a sentence is a poor way to choose one. The
+   still is rendered by the actual renderer (scripts/thumbnails.mjs), so it
+   cannot promise something the template does not do. */
+.option-thumbed {
+  grid-template-columns: 104px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+}
+
+.option-thumbed .thumb {
+  width: 104px;
+  /* height:auto is load-bearing. The img carries width/height attributes so
+     the browser reserves the right box before the file arrives, but without
+     this the attribute height wins over aspect-ratio and every still renders
+     as a 360px-tall crop of its own middle. */
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: 7px;
+  object-fit: cover;
+  display: block;
+  border: 1px solid var(--line-soft);
+  background: var(--ink);
+}
+
+/* Scoped to match .option-thumbed .thumb's specificity, or that rule's
+   background: var(--ink) wins and this renders as a black rectangle. */
+.option-thumbed .thumb-auto {
+  background:
+    linear-gradient(135deg,
+      color-mix(in oklab, var(--accent) 45%, transparent) 0%,
+      var(--ink-raise) 45%,
+      color-mix(in oklab, var(--accent) 22%, transparent) 100%);
+}
+
+.option-thumbed .option-text { display: grid; gap: 3px; min-width: 0; }
+
+@media (max-width: 460px) {
+  .option-thumbed { grid-template-columns: 76px minmax(0, 1fr); }
+  .option-thumbed .thumb { width: 76px; }
+}
+
 .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 8px; }
 
 .swatch {

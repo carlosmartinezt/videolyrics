@@ -24,6 +24,8 @@ export const LYRIC_MODES = {
   cascade: 'cascade',
   /** One giant word at a time, filling the frame. For sparse, punchy lyrics. */
   hero: 'hero',
+  /** Words swell into place and dissolve one by one. The cinematic one. */
+  bloom: 'bloom',
 };
 
 export const TEMPLATES = [
@@ -32,7 +34,7 @@ export const TEMPLATES = [
     name: 'Aurora',
     blurb: 'Slow liquid colour fields. Type floats in the middle, breathing with the track.',
     moods: ['dreamy', 'calm', 'romantic', 'ambient', 'hopeful', 'soft', 'ethereal', 'flowing'],
-    lyricModes: ['lineFade', 'karaoke', 'cascade'],
+    lyricModes: ['lineFade', 'bloom', 'karaoke', 'cascade'],
     defaultLyricMode: 'lineFade',
     usesPhotos: 'optional',
     photoTreatment: 'blend',
@@ -58,7 +60,7 @@ export const TEMPLATES = [
     name: 'Filmstrip',
     blurb: 'Your photographs, drifting. Letterbox bars, grain, lyrics low in frame.',
     moods: ['cinematic', 'nostalgic', 'melancholy', 'tender', 'vintage', 'storytelling', 'grounded'],
-    lyricModes: ['lineFade', 'karaoke'],
+    lyricModes: ['lineFade', 'bloom', 'karaoke'],
     defaultLyricMode: 'lineFade',
     usesPhotos: 'preferred',
     photoTreatment: 'kenburns',
@@ -71,7 +73,7 @@ export const TEMPLATES = [
     name: 'Neon',
     blurb: 'Black room, glowing letters, sparks thrown off every hit.',
     moods: ['electronic', 'futuristic', 'dark', 'euphoric', 'night', 'intense', 'energetic'],
-    lyricModes: ['karaoke', 'wordPop', 'hero'],
+    lyricModes: ['karaoke', 'wordPop', 'hero', 'bloom'],
     defaultLyricMode: 'karaoke',
     usesPhotos: 'optional',
     photoTreatment: 'ghost',
@@ -84,7 +86,7 @@ export const TEMPLATES = [
     name: 'Editorial',
     blurb: 'A quiet page. Fine serif, wide margins, almost nothing moves.',
     moods: ['elegant', 'intimate', 'acoustic', 'serious', 'classic', 'minimal', 'introspective'],
-    lyricModes: ['lineFade', 'cascade', 'karaoke'],
+    lyricModes: ['lineFade', 'cascade', 'bloom', 'karaoke'],
     defaultLyricMode: 'cascade',
     usesPhotos: 'optional',
     photoTreatment: 'plate',
