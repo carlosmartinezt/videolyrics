@@ -79,6 +79,43 @@ videolyrics.org {
     }
 }
 
+# The API on a host of its own.
+#
+# This exists so the front end can be served from somewhere that is not this
+# box — Vercel — while alignment stays here. It is additive: videolyrics.org
+# above still serves both halves, so this changes nothing until a build is
+# made with VITE_API_BASE pointing at it.
+#
+# The reverse_proxy block is character-for-character the one above, for the
+# same reason: alignment takes minutes and progress arrives over SSE, so Caddy
+# must neither buffer nor time out.
+#
+# The origin certificate must cover this name. A Cloudflare Origin CA cert
+# issued for videolyrics.org alone will not — check its SANs for
+# *.videolyrics.org and reissue if it is missing, or the symptom is a
+# Cloudflare 526 that looks like the API is down.
+api.videolyrics.org {
+    tls /etc/caddy/origin-certs/videolyrics.crt /etc/caddy/origin-certs/videolyrics.key
+
+    encode gzip zstd
+
+    handle /api/* {
+        reverse_proxy 127.0.0.1:3058 {
+            flush_interval -1
+            transport http {
+                read_timeout 30m
+                write_timeout 30m
+            }
+        }
+    }
+
+    # Nothing else is served here. No dist/, no redirect to the front end: a
+    # stray link to this host should look broken, not half-work.
+    handle {
+        respond "Not found." 404
+    }
+}
+
 www.videolyrics.org {
     tls /etc/caddy/origin-certs/videolyrics.crt /etc/caddy/origin-certs/videolyrics.key
 

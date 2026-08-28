@@ -6,3 +6,6 @@ aligner/.venv/
 aligner/.torch/
 public/fonts/*.woff2
 *.tsbuildinfo
+.vercel
+.env.local
+.env.*.local

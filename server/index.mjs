@@ -42,14 +42,51 @@ const HOST = process.env.HOST || '127.0.0.1';
 
 const MAX_JSON_BYTES = 512 * 1024;
 
+/**
+ * Browser origins allowed to call this API, comma-separated.
+ *
+ * Empty — the default, and how this has always run — means same-origin only:
+ * Caddy serves the page and proxies /api from videolyrics.org, so no CORS
+ * header is needed and none is sent. Set this only when the front end moves
+ * to a host of its own:
+ *
+ *   ALLOWED_ORIGINS=https://videolyrics.org,https://videolyrics.vercel.app
+ *
+ * Origins are compared exactly. There is no wildcard and no pattern, because
+ * the alignment endpoint is open to anonymous visitors and a loose match here
+ * is the difference between a rate limit and a free two-core cluster.
+ */
+const ALLOWED_ORIGINS = new Set(
+  (process.env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean),
+);
+
 /* --------------------------------- routing -------------------------------- */
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const parts = url.pathname.replace(/^\/+|\/+$/g, '').split('/');
 
+  const allowed = cors(req, res);
+
   try {
     if (parts[0] !== 'api') return notFound(res);
+
+    /* Preflight.
+     *
+     * Answered once for the whole API rather than per route. The upload sets
+     * x-filename and content-type on a PUT, and every mutating call carries
+     * x-job-token, so there is no request here the browser would treat as
+     * simple — a missing preflight fails all of them, not some.
+     */
+    if (req.method === 'OPTIONS') {
+      if (!allowed) return void res.writeHead(403).end();
+      res.writeHead(204, {
+        'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'access-control-allow-headers': 'authorization, content-type, x-job-token, x-filename',
+        'access-control-max-age': '86400',
+      });
+      return res.end();
+    }
 
     if (parts[1] === 'health' && req.method === 'GET') {
       return json(res, 200, { ok: true, ...store.stats(), uptime: Math.round(process.uptime()) });
@@ -268,6 +305,33 @@ function streamEvents(req, res, job) {
 }
 
 /* -------------------------------- helpers -------------------------------- */
+
+/**
+ * Allow this request's origin, if it is one of ours.
+ *
+ * Returns whether the origin was allowed, so the preflight can refuse rather
+ * than answer. Called before anything is written, since both json() and the
+ * SSE stream go straight to writeHead — Node merges headers set here with the
+ * object passed there, giving writeHead precedence, and neither sets these.
+ *
+ * `Vary: Origin` is unconditional and not optional. Cloudflare sits in front
+ * of this and a response cached for one origin must never be replayed with
+ * its Allow-Origin header to another.
+ *
+ * There is deliberately no Access-Control-Allow-Credentials: nothing here
+ * rides on a cookie. The Supabase session and the job token are both headers
+ * the client sets by hand, so a cross-site request that forgot them is simply
+ * an unauthenticated request, and CSRF has nothing to ride in on.
+ */
+function cors(req, res) {
+  res.setHeader('vary', 'Origin');
+  const origin = req.headers.origin;
+  // No Origin at all is a same-origin fetch or a non-browser client; both are
+  // fine and neither wants a header back.
+  if (!origin || !ALLOWED_ORIGINS.has(origin)) return false;
+  res.setHeader('access-control-allow-origin', origin);
+  return true;
+}
 
 function json(res, status, payload) {
   const body = JSON.stringify(payload);
