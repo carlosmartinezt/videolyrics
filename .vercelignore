@@ -1,0 +1,19 @@
+# What Vercel does NOT need.
+#
+# Vercel builds the front end and nothing else: the API, the aligner and the
+# acoustic models stay on the box. aligner/ alone is 2.7 GB once its venv and
+# torch cache exist, so this is the difference between a 1 MB upload and a
+# failed one. .gitignore already covers most of it; this file states it
+# outright so the deploy does not depend on that staying true.
+
+aligner/
+server/
+ops/
+deploy/
+supabase/
+data/
+scripts/warm-models.py
+Dockerfile
+compose.yaml
+.dockerignore
+.env

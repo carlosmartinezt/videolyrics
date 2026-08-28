@@ -2,7 +2,19 @@
 
 import type { Job, Plan, DirectorInfo, Prefs, ServerConfig } from './types';
 
-const BASE = '/api';
+/**
+ * Where the API lives.
+ *
+ * Empty in development and on the box, where Caddy serves the page and proxies
+ * /api from the same origin. Set VITE_API_BASE at build time to point a
+ * separately hosted front end (Vercel) at the API's own host — the value is a
+ * scheme and host with no trailing slash, e.g. https://api.videolyrics.org.
+ *
+ * That origin must also appear in the page's connect-src and in the API's
+ * ALLOWED_ORIGINS, or the browser will refuse the request before and after
+ * it is made, respectively.
+ */
+const BASE = `${import.meta.env.VITE_API_BASE ?? ''}/api`;
 
 /**
  * Two credentials travel to the API and they mean different things.
