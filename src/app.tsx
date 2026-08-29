@@ -823,6 +823,21 @@ function Setup(props: {
             </div>
           )}
 
+          {/* The first outbound link on the page. It is a plain link and not
+              an embed on purpose: a YouTube iframe would need frame-src and
+              img-src opened up in two separate CSP blocks, and would phone
+              home for every visitor who never clicks it. */}
+          <p className="hint hero-example">
+            Here is one it made:{' '}
+            <a
+              href="https://www.youtube.com/watch?v=LYaVaCsUN-o"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Winner, on YouTube
+            </a>
+          </p>
+
           <div className="hero-facts">
             <span><b>Word-level</b> timing, not line-level</span>
             <span><b>{config.templates.length}</b> looks</span>

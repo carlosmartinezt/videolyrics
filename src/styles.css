@@ -269,6 +269,14 @@ button, input, textarea, select { font: inherit; color: inherit; }
 
 .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 
+.hero-example { margin-top: 18px; }
+.hero-example a {
+  color: var(--text-2);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+}
+.hero-example a:hover { color: var(--text); border-bottom-color: var(--accent-line); }
+
 .hero-facts {
   display: flex;
   flex-wrap: wrap;
