@@ -2,9 +2,9 @@
 #
 # Deploy videolyrics.
 #
-# Caddy serves dist/ straight from this repo, so building *is* deploying the
-# front end. The API is a systemd user unit, restarted here. Neither step
-# needs sudo.
+# The build lands in dist/, then gets published to ~/public/videolyrics, which
+# is what Caddy actually serves. The API is a systemd user unit, restarted
+# here. Neither step needs sudo.
 #
 #   ./ops/deploy.sh            build, restart the API, verify
 #   ./ops/deploy.sh --no-test  skip the test suites
@@ -13,6 +13,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
+
+. "$HOME/bin/deploy-lib.sh"
 
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -53,7 +55,23 @@ fi
 
 step "Building the front end"
 npx vite build
-green "dist/ rebuilt — Caddy serves it directly, so the site is already live"
+
+# dist/ is build scratch inside the source tree. What Caddy serves is
+# ~/public/videolyrics, and publishing is a staged swap rather than a copy into
+# place: the live directory is never half-written, and the previous build stays
+# as .old until the smoke test below passes.
+#
+# This split is the whole point of ~/public. Caddy used to root straight into
+# dist/ here, which meant a `git clean` or a disk sweep silently took the site
+# down — exactly what happened to journal and njtransit.
+PUBLIC_DIR="$PUBLIC_ROOT/videolyrics"
+rm -rf "$PUBLIC_DIR.new"
+mkdir -p "$PUBLIC_DIR.new"
+cp -a dist/. "$PUBLIC_DIR.new/"
+rm -rf "$PUBLIC_DIR.old"
+[[ -d "$PUBLIC_DIR" ]] && mv "$PUBLIC_DIR" "$PUBLIC_DIR.old"
+mv "$PUBLIC_DIR.new" "$PUBLIC_DIR"
+green "published to $PUBLIC_DIR"
 
 step "Warming the acoustic models"
 # Downloads on first use would otherwise land inside somebody's first job and
@@ -95,6 +113,7 @@ done
 
 if [[ -n "$SITE" ]]; then
   green "$SITE is live"
+  rm -rf "$PUBLIC_DIR.old"
 
   # The Caddyfile is edited by hand with sudo, so it drifts from the snippet
   # in this repo. The failure mode that matters is a CSP that blocks Supabase:
