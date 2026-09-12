@@ -1,0 +1,66 @@
+# Keep the Supabase project out of the free-tier idle window.
+#
+# Supabase pauses a Free plan project when it sees too little database activity
+# over a rolling 7-day window, and a project left paused long enough is deleted.
+# Videolyrics only touches Supabase when someone signs in or spends credits,
+# so it can go weeks without a query reaching the server. This workflow issues
+# one cheap query every three days so the project always looks active. (It
+# happened for real: this project was paused on 2026-08-28.)
+#
+# The request is an ordinary PostgREST select with the publishable key. RLS means it
+# comes back as an empty array, which is fine: what counts is that Postgres ran
+# a query. Nothing is read, written, or exposed.
+#
+# Caveat worth knowing: GitHub disables scheduled workflows on a repository with
+# no commit activity for 60 days, and emails first. If this repo goes quiet for
+# that long, re-enable this from the Actions tab.
+name: Supabase keepalive
+
+on:
+  schedule:
+    - cron: '41 6 */3 * *' # 06:41 UTC, every third day
+  workflow_dispatch: # run by hand from the Actions tab
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Query Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
+            echo "::error::SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY repository secrets are not set."
+            exit 1
+          fi
+
+          # A resuming project can 504 for a minute or two, so retry before
+          # calling it a failure.
+          for attempt in 1 2 3 4 5; do
+            CODE="$(curl -sS -o /tmp/keepalive.json -w '%{http_code}' --max-time 30 \
+              -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
+              "${SUPABASE_URL}/rest/v1/profiles?select=id&limit=1" || echo 000)"
+
+            if [ "$CODE" = "200" ]; then
+              echo "✓ Supabase answered HTTP 200 on attempt ${attempt}; project is active."
+              exit 0
+            fi
+
+            echo "attempt ${attempt}: HTTP ${CODE}"
+            head -c 300 /tmp/keepalive.json 2>/dev/null || true
+            echo
+            sleep 30
+          done
+
+          echo "::error::Supabase did not return 200 after 5 attempts (last: ${CODE})."
+          echo "If the project is paused, resume it at https://supabase.com/dashboard"
+          exit 1
