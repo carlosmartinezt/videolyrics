@@ -2,11 +2,17 @@
 #
 # Deploy videolyrics.
 #
-# The build lands in dist/, then gets published to ~/public/videolyrics, which
-# is what Caddy actually serves. The API is a systemd user unit, restarted
-# here. Neither step needs sudo.
+# Two things get published, both into $PUBLIC_ROOT, both as a staged swap:
 #
-#   ./ops/deploy.sh            build, restart the API, verify
+#   videolyrics-api/   what this box actually serves. server/, shared/ and the
+#                      aligner's Python. The systemd unit runs from here.
+#   videolyrics/       the front end. Dormant: Vercel serves www.videolyrics.org
+#                      and the Caddy block pointing here is a fallback. Kept
+#                      fresh so the fallback is not a year-old build.
+#
+# Neither step needs sudo.
+#
+#   ./ops/deploy.sh            build, publish, restart the API, verify
 #   ./ops/deploy.sh --no-test  skip the test suites
 #
 set -euo pipefail
@@ -22,6 +28,9 @@ step()  { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
 
 RUN_TESTS=1
 [[ "${1:-}" == "--no-test" ]] && RUN_TESTS=0
+
+API_DIR="$PUBLIC_ROOT/videolyrics-api"
+WEB_DIR="$PUBLIC_ROOT/videolyrics"
 
 step "Checking prerequisites"
 for binary in node npm; do
@@ -53,25 +62,58 @@ if [[ $RUN_TESTS -eq 1 ]]; then
   green "tests passed"
 fi
 
+# The unit ships in this repo, so install it before the drift check rather than
+# after: otherwise a change to WorkingDirectory= here could never be applied,
+# the check would fail against the copy already installed, and the only way
+# through would be to edit ~/.config/systemd/user by hand.
+step "Installing the unit"
+UNIT_SRC="$ROOT/deploy/videolyrics-api.service"
+UNIT_DST="$HOME/.config/systemd/user/videolyrics-api.service"
+mkdir -p "$(dirname "$UNIT_DST")"
+if ! cmp -s "$UNIT_SRC" "$UNIT_DST"; then
+  cp "$UNIT_SRC" "$UNIT_DST"
+  systemctl --user daemon-reload
+  green "unit file updated"
+else
+  green "unit file unchanged"
+fi
+
+# Aborts if the unit's WorkingDirectory= and PUBLIC_ROOT have drifted. Without
+# it the publish lands where nothing runs it and the restart brings the old
+# build straight back, so the deploy reports success and changes nothing.
+assert_unit_workdir videolyrics-api "$API_DIR" --user
+
+step "Publishing the API"
+# server/ and shared/ import nothing outside node: builtins, so there is no
+# node_modules to carry — package.json goes along for `type: module` and for
+# anyone running node from in here by hand.
+#
+# The aligner's .py files come too, because server/aligner.mjs finds align.py
+# relative to itself. What does not come is .venv, .torch and data/: they are
+# 2.8 GB and the jobs in flight, pinned by absolute path in the unit instead.
+rm -rf "$API_DIR.new"
+mkdir -p "$API_DIR.new"
+cp -a server shared package.json package-lock.json "$API_DIR.new/"
+mkdir -p "$API_DIR.new/aligner" "$API_DIR.new/scripts"
+cp -a aligner/*.py aligner/requirements.txt "$API_DIR.new/aligner/"
+cp -a scripts/warm-models.py "$API_DIR.new/scripts/"
+rm -rf "$API_DIR.old"
+[[ -d "$API_DIR" ]] && mv "$API_DIR" "$API_DIR.old"
+mv "$API_DIR.new" "$API_DIR"
+green "published to $API_DIR"
+
 step "Building the front end"
 npx vite build
 
-# dist/ is build scratch inside the source tree. What Caddy serves is
-# ~/public/videolyrics, and publishing is a staged swap rather than a copy into
-# place: the live directory is never half-written, and the previous build stays
-# as .old until the smoke test below passes.
-#
-# This split is the whole point of ~/public. Caddy used to root straight into
-# dist/ here, which meant a `git clean` or a disk sweep silently took the site
-# down — exactly what happened to journal and njtransit.
-PUBLIC_DIR="$PUBLIC_ROOT/videolyrics"
-rm -rf "$PUBLIC_DIR.new"
-mkdir -p "$PUBLIC_DIR.new"
-cp -a dist/. "$PUBLIC_DIR.new/"
-rm -rf "$PUBLIC_DIR.old"
-[[ -d "$PUBLIC_DIR" ]] && mv "$PUBLIC_DIR" "$PUBLIC_DIR.old"
-mv "$PUBLIC_DIR.new" "$PUBLIC_DIR"
-green "published to $PUBLIC_DIR"
+# dist/ is build scratch inside the source tree. Vercel serves the real front
+# end; this publish keeps the dormant Caddy fallback current.
+rm -rf "$WEB_DIR.new"
+mkdir -p "$WEB_DIR.new"
+cp -a dist/. "$WEB_DIR.new/"
+rm -rf "$WEB_DIR.old"
+[[ -d "$WEB_DIR" ]] && mv "$WEB_DIR" "$WEB_DIR.old"
+mv "$WEB_DIR.new" "$WEB_DIR"
+green "published to $WEB_DIR"
 
 step "Warming the acoustic models"
 # Downloads on first use would otherwise land inside somebody's first job and
@@ -80,14 +122,6 @@ FFMPEG_BIN="$FFMPEG" TORCH_HOME="$ROOT/aligner/.torch" \
   "$ROOT/aligner/.venv/bin/python" scripts/warm-models.py
 
 step "Restarting the API"
-UNIT_SRC="$ROOT/deploy/videolyrics-api.service"
-UNIT_DST="$HOME/.config/systemd/user/videolyrics-api.service"
-mkdir -p "$(dirname "$UNIT_DST")"
-if ! cmp -s "$UNIT_SRC" "$UNIT_DST"; then
-  cp "$UNIT_SRC" "$UNIT_DST"
-  systemctl --user daemon-reload
-  green "unit file updated"
-fi
 systemctl --user enable --now videolyrics-api >/dev/null
 systemctl --user restart videolyrics-api
 
@@ -97,36 +131,35 @@ for attempt in $(seq 1 20); do
     green "API healthy: $(curl -fsS http://127.0.0.1:3058/api/health)"
     break
   fi
-  [[ $attempt -eq 20 ]] && { red "API did not come up"; journalctl --user -u videolyrics-api -n 30 --no-pager; exit 1; }
+  if [[ $attempt -eq 20 ]]; then
+    red "API did not come up. The previous build is still at $API_DIR.old:"
+    red "  rm -rf $API_DIR && mv $API_DIR.old $API_DIR && systemctl --user restart videolyrics-api"
+    journalctl --user -u videolyrics-api -n 30 --no-pager
+    exit 1
+  fi
   sleep 0.5
 done
 
-# The canonical host first; the original one is kept as a redirect and is
-# still worth checking while DNS for the new domain settles.
-SITE=""
-for candidate in "${SITE_URL:-https://videolyrics.org}" https://videolyrics.carlosmartinezt.com; do
+# The API is what this box serves. api.videolyrics.org is the name the Vercel
+# front end calls; videolyrics.org still answers /api too and is checked second
+# while that block is alive.
+API=""
+for candidate in "${API_URL:-https://api.videolyrics.org}" https://videolyrics.org; do
   if curl -fsS --max-time 6 -o /dev/null -w '%{http_code}' "$candidate/api/health" 2>/dev/null | grep -q 200; then
-    SITE="$candidate"
+    API="$candidate"
     break
   fi
 done
 
-if [[ -n "$SITE" ]]; then
-  green "$SITE is live"
-  rm -rf "$PUBLIC_DIR.old"
-
-  # The Caddyfile is edited by hand with sudo, so it drifts from the snippet
-  # in this repo. The failure mode that matters is a CSP that blocks Supabase:
-  # fetch() reports a bare network error and sign-in dies with no clue why.
-  LIVE_CSP=$(curl -fsSI --max-time 5 "$SITE/" 2>/dev/null | grep -i '^content-security-policy' || true)
-  if grep -q '^SUPABASE_URL=.\+' .env 2>/dev/null && ! grep -q 'supabase' <<<"$LIVE_CSP"; then
-    printf '\n\033[33mCSP drift.\033[0m Supabase is configured but the live CSP does not allow it,\n'
-    printf 'so sign-in will fail with an unexplained network error. Fix with:\n\n'
-    printf "  sudo sed -i \"s|connect-src 'self' blob:;|connect-src 'self' blob: https://*.supabase.co;|\" /etc/caddy/Caddyfile \\\n"
-    printf '    && sudo systemctl reload caddy\n'
-  fi
+if [[ -n "$API" ]]; then
+  green "$API is live"
+  rm -rf "$API_DIR.old" "$WEB_DIR.old"
 else
-  printf '\n\033[33mNot reachable from outside.\033[0m Two things need a human:\n'
-  printf '  1. Cloudflare: an A record for videolyrics.org -> 5.161.231.48\n'
-  printf '  2. Caddy:      sudo %s/ops/install-caddy-site.sh\n' "$ROOT"
+  rm -rf "$WEB_DIR.old"
+  printf '\n\033[33mNot reachable from outside.\033[0m Local health passed, so this is DNS,\n'
+  printf 'Cloudflare or Caddy rather than the build. Keeping %s.old for now.\n' "$API_DIR"
+  printf '  1. Cloudflare: an A record for api.videolyrics.org -> 5.161.231.48\n'
+  printf '  2. The origin cert must cover api.videolyrics.org — a cert for the\n'
+  printf '     bare name alone gives a 526 that looks like the API is down.\n'
+  printf '  3. Caddy:      sudo %s/ops/install-caddy-site.sh\n' "$ROOT"
 fi

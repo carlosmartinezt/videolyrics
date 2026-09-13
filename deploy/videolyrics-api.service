@@ -8,6 +8,8 @@
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now videolyrics-api
 #
+# ops/deploy.sh does all of that for you and is the normal way in.
+#
 # Logs:  journalctl --user -u videolyrics-api -f
 #
 # Credentials live in /home/carlos/videolyrics/.env — keep it chmod 600.
@@ -21,7 +23,15 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/carlos/videolyrics
+
+# The deployed copy, never the repo. ops/deploy.sh publishes server/, shared/
+# and the aligner's Python into here with a staged swap, so the source tree can
+# be cleaned or re-cloned without touching what is running.
+#
+# systemd takes this literally and cannot read PUBLIC_ROOT, so the path is
+# spelled out and every release calls assert_unit_workdir before swapping. If
+# you move PUBLIC_ROOT, this line has to move with it by hand.
+WorkingDirectory=/home/carlos/public/videolyrics-api
 ExecStart=/usr/bin/env node server/index.mjs
 Restart=always
 RestartSec=3
@@ -35,15 +45,27 @@ Environment=PORT=3058
 Environment=FFMPEG_BIN=/home/carlos/bin/ffmpeg
 Environment=FFPROBE_BIN=/home/carlos/bin/ffprobe
 
+# Three absolute paths back into the source tree, because a release replaces
+# the working directory wholesale and none of these should go with it:
+#
+#   .venv    1.2 GB of torch. Rebuildable, but not per deploy, and copying it
+#            each release would need 2.4 GB free for the .old alongside it.
+#   .torch   1.6 GB of acoustic models. A cache, but losing it costs a 400 MB
+#            download in the middle of somebody's first job.
+#   data     the jobs themselves. State. Publishing over it would delete work
+#            in flight.
+#
+# server/aligner.mjs and server/jobs.mjs default all three to paths relative to
+# the code, which is right for `npm run dev` and wrong here, so they are set.
+Environment=ALIGNER_PYTHON=/home/carlos/videolyrics/aligner/.venv/bin/python
+Environment=TORCH_HOME=/home/carlos/videolyrics/aligner/.torch
+Environment=DATA_DIR=/home/carlos/videolyrics/data/jobs
+
 # Two cores, shared with five other services. One alignment at a time, and
 # torch reads this at import — setting it later leaves it single-threaded.
 Environment=ALIGNER_THREADS=2
 Environment=OMP_NUM_THREADS=2
 Environment=MKL_NUM_THREADS=2
-
-# Acoustic models are cached inside the deploy rather than in a home cache,
-# so a wipe of ~/.cache never costs a 400 MB re-download mid-job.
-Environment=TORCH_HOME=/home/carlos/videolyrics/aligner/.torch
 
 # The mark burned into every frame. Server-side on purpose: no client
 # preference and no model output can switch it off.
