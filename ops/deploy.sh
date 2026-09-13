@@ -10,6 +10,11 @@
 #                      and the Caddy block pointing here is a fallback. Kept
 #                      fresh so the fallback is not a year-old build.
 #
+# Nothing runs out of this repo, so it can live anywhere and be deleted after.
+# The pieces a release must not replace are in $VIDEOLYRICS_RUNTIME, default
+# ~/videolyrics-runtime: .env, the jobs in flight, the aligner venv and the
+# model cache. See its README.
+#
 # Neither step needs sudo.
 #
 #   ./ops/deploy.sh            build, publish, restart the API, verify
@@ -31,20 +36,24 @@ RUN_TESTS=1
 
 API_DIR="$PUBLIC_ROOT/videolyrics-api"
 WEB_DIR="$PUBLIC_ROOT/videolyrics"
+RUNTIME="${VIDEOLYRICS_RUNTIME:-$HOME/videolyrics-runtime}"
+PYTHON="$RUNTIME/aligner/.venv/bin/python"
 
 step "Checking prerequisites"
 for binary in node npm; do
   command -v "$binary" >/dev/null || { red "missing $binary"; exit 1; }
 done
-[[ -x "$ROOT/aligner/.venv/bin/python" ]] || {
-  red "aligner venv missing — run: uv venv --python 3.12 aligner/.venv && \\
-    uv pip install --python aligner/.venv/bin/python --index-strategy unsafe-best-match \\
+[[ -x "$PYTHON" ]] || {
+  red "aligner venv missing at $PYTHON — run:
+    uv venv --python 3.12 $RUNTIME/aligner/.venv && \\
+    uv pip install --python $PYTHON --index-strategy unsafe-best-match \\
     --extra-index-url https://download.pytorch.org/whl/cpu -r aligner/requirements.txt"
   exit 1
 }
+[[ -f "$RUNTIME/.env" ]] || red "warning: no $RUNTIME/.env — accounts, credits and the download gate will be off" 
 FFMPEG="${FFMPEG_BIN:-$HOME/bin/ffmpeg}"
 [[ -x "$FFMPEG" ]] || { red "no ffmpeg at $FFMPEG — see README"; exit 1; }
-green "node $(node --version), python $("$ROOT/aligner/.venv/bin/python" --version | cut -d' ' -f2), ffmpeg present"
+green "node $(node --version), python $("$PYTHON" --version | cut -d' ' -f2), ffmpeg present"
 
 step "Installing dependencies"
 npm ci --silent 2>/dev/null || npm install --silent
@@ -58,7 +67,7 @@ if [[ $RUN_TESTS -eq 1 ]]; then
   step "Running tests"
   npx tsc -b --noEmit
   node --test shared/plan.test.mjs server/director/director.test.mjs
-  "$ROOT/aligner/.venv/bin/python" -m unittest discover -s aligner -p "test_*.py"
+  "$PYTHON" -m unittest discover -s aligner -p "test_*.py"
   green "tests passed"
 fi
 
@@ -89,8 +98,8 @@ step "Publishing the API"
 # anyone running node from in here by hand.
 #
 # The aligner's .py files come too, because server/aligner.mjs finds align.py
-# relative to itself. What does not come is .venv, .torch and data/: they are
-# 2.8 GB and the jobs in flight, pinned by absolute path in the unit instead.
+# relative to itself. What does not come is the venv, the model cache and the
+# jobs: they live in $RUNTIME, pinned by absolute path in the unit instead.
 rm -rf "$API_DIR.new"
 mkdir -p "$API_DIR.new"
 cp -a server shared package.json package-lock.json "$API_DIR.new/"
@@ -118,8 +127,8 @@ green "published to $WEB_DIR"
 step "Warming the acoustic models"
 # Downloads on first use would otherwise land inside somebody's first job and
 # look like a two-minute stall.
-FFMPEG_BIN="$FFMPEG" TORCH_HOME="$ROOT/aligner/.torch" \
-  "$ROOT/aligner/.venv/bin/python" scripts/warm-models.py
+FFMPEG_BIN="$FFMPEG" TORCH_HOME="$RUNTIME/aligner/.torch" \
+  "$PYTHON" scripts/warm-models.py
 
 step "Restarting the API"
 systemctl --user enable --now videolyrics-api >/dev/null

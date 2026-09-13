@@ -12,10 +12,13 @@
 #
 # Logs:  journalctl --user -u videolyrics-api -f
 #
-# Credentials live in /home/carlos/videolyrics/.env — keep it chmod 600.
+# Credentials live in /home/carlos/videolyrics-runtime/.env — keep it chmod 600.
 # That file carries the Supabase keys (accounts and credits) and, optionally,
 # the art-director model key. Without Supabase, the app still aligns, designs
 # and previews; only the download gate and the credit counter go away.
+#
+# It is gitignored, so that file is the only copy. There is no source tree on
+# the box to fall back on: see ~/videolyrics-runtime/README.md.
 
 [Unit]
 Description=videolyrics API (alignment + art direction, behind Caddy)
@@ -45,21 +48,21 @@ Environment=PORT=3058
 Environment=FFMPEG_BIN=/home/carlos/bin/ffmpeg
 Environment=FFPROBE_BIN=/home/carlos/bin/ffprobe
 
-# Three absolute paths back into the source tree, because a release replaces
+# Three absolute paths into ~/videolyrics-runtime, because a release replaces
 # the working directory wholesale and none of these should go with it:
 #
 #   .venv    1.2 GB of torch. Rebuildable, but not per deploy, and copying it
 #            each release would need 2.4 GB free for the .old alongside it.
 #   .torch   1.6 GB of acoustic models. A cache, but losing it costs a 400 MB
 #            download in the middle of somebody's first job.
-#   data     the jobs themselves. State. Publishing over it would delete work
+#   jobs     the jobs themselves. State. Publishing over it would delete work
 #            in flight.
 #
 # server/aligner.mjs and server/jobs.mjs default all three to paths relative to
 # the code, which is right for `npm run dev` and wrong here, so they are set.
-Environment=ALIGNER_PYTHON=/home/carlos/videolyrics/aligner/.venv/bin/python
-Environment=TORCH_HOME=/home/carlos/videolyrics/aligner/.torch
-Environment=DATA_DIR=/home/carlos/videolyrics/data/jobs
+Environment=ALIGNER_PYTHON=/home/carlos/videolyrics-runtime/aligner/.venv/bin/python
+Environment=TORCH_HOME=/home/carlos/videolyrics-runtime/aligner/.torch
+Environment=DATA_DIR=/home/carlos/videolyrics-runtime/jobs
 
 # Two cores, shared with five other services. One alignment at a time, and
 # torch reads this at import — setting it later leaves it single-threaded.
@@ -71,7 +74,7 @@ Environment=MKL_NUM_THREADS=2
 # preference and no model output can switch it off.
 Environment=WATERMARK_TEXT=videolyrics.org
 
-EnvironmentFile=-/home/carlos/videolyrics/.env
+EnvironmentFile=-/home/carlos/videolyrics-runtime/.env
 
 NoNewPrivileges=true
 PrivateTmp=true
