@@ -161,32 +161,6 @@ async function main() {
 
     await page.screenshot({ path: path.join(OUT, '4-studio.png'), fullPage: true });
 
-    /* ---- accounts and credits ---------------------------------------- */
-
-    const accountsOn = await page.evaluate(async () => {
-      const config = await fetch('/api/config').then((r) => r.json());
-      return config.auth?.enabled === true;
-    });
-
-    if (accountsOn) {
-      // Anonymous: the export button must lead to a sign-in sheet, not a file.
-      await page.getByRole('button', { name: 'Export MP4' }).click();
-      const signInShown = await page.locator('.dialog h2', { hasText: 'Sign in' })
-        .first().isVisible({ timeout: 5000 }).catch(() => false);
-      step('anonymous export asks for an account', signInShown);
-      await page.screenshot({ path: path.join(OUT, '5-signin.png') });
-
-      await page.fill('#signin-email', args.email || 'e2e@example.com');
-      // Scope to the sheet: the header carries a "Sign in" button too.
-      await page.locator('.dialog').getByRole('button', { name: /^Sign in$|Send me a link/ }).click();
-      await page.waitForSelector('.credits', { timeout: 10_000 });
-
-      const before = await page.locator('.credits b').textContent();
-      step('signed in with a credit balance', before?.trim() === '5', `${before?.trim()} credits`);
-    } else {
-      step('accounts configured', false, 'auth disabled — skipping credit checks');
-    }
-
     // Seek across the song and confirm the preview keeps drawing.
     const previewProbe = await page.evaluate(async () => {
       const canvas = document.querySelector('.stage canvas');
@@ -224,18 +198,7 @@ async function main() {
     await page.screenshot({ path: path.join(OUT, '6-export.png') });
 
     const encodeStarted = Date.now();
-    // Signed in and not yet unlocked, the button spends the credit first.
-    const startButton = page.getByRole('button', { name: /Use 1 credit and encode|Start encoding/ });
-    await startButton.click();
-
-    if (accountsOn) {
-      await page.waitForFunction(
-        () => document.querySelector('.credits b')?.textContent?.trim() === '4',
-        { timeout: 30_000 },
-      ).catch(() => {});
-      const after = await page.locator('.credits b').textContent();
-      step('exporting spent exactly one credit', after?.trim() === '4', `${after?.trim()} left`);
-    }
+    await page.getByRole('button', { name: 'Start encoding' }).click();
 
     const download = page.waitForEvent('download', { timeout: 900_000 });
     await page.waitForSelector('a.btn-primary[download]', { timeout: 900_000 });

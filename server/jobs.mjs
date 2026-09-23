@@ -28,11 +28,9 @@ export const LIMITS = {
   maxLyricChars: 20_000,
   maxDurationSeconds: Number(process.env.MAX_DURATION_SECONDS || 12 * 60),
   retentionMs: Number(process.env.RETENTION_MS || 6 * 60 * 60 * 1000),
-  // Alignment is open to anonymous visitors, so the per-IP cap is the only
-  // thing between one script and both cores for the rest of the day. Signed-in
-  // people are additionally metered by credits at export, so they get room.
-  maxJobsPerIpPerHour: Number(process.env.MAX_JOBS_PER_IP || 20),
-  maxAnonJobsPerIpPerHour: Number(process.env.MAX_ANON_JOBS_PER_IP || 3),
+  // Alignment is open to anyone, so the per-IP cap is the only thing between
+  // one script and both cores for the rest of the day.
+  maxJobsPerIpPerHour: Number(process.env.MAX_JOBS_PER_IP || 5),
   maxTotalBytes: Number(process.env.MAX_TOTAL_BYTES || 3 * 1024 * 1024 * 1024),
 };
 
@@ -58,7 +56,7 @@ function jobDir(id) {
   return path.join(DATA_DIR, id);
 }
 
-export async function createJob({ lyrics, prefs, ip, user = null }) {
+export async function createJob({ lyrics, prefs, ip }) {
   const text = String(lyrics || '');
   if (!text.trim()) throw badRequest('Paste the lyrics first.');
   if (text.length > LIMITS.maxLyricChars) {
@@ -75,12 +73,9 @@ export async function createJob({ lyrics, prefs, ip, user = null }) {
     id,
     token,
     ip,
-    // Identity only. The access token deliberately does not come along: it
-    // expires in an hour, a job lives six, and every call that needs one
-    // re-reads it from the request that is asking.
-    user: user ? { id: user.id, email: user.email } : null,
+    // Only for the email that tells the owner someone started a video.
+    firstLine: text.split('\n').map((l) => l.trim()).find(Boolean)?.slice(0, 120) || null,
     songHash: null,
-    unlocked: false,
     state: 'created',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -128,9 +123,8 @@ export async function receiveAudio(job, stream, { filename, contentLength }) {
 
   const dest = path.join(jobDir(job.id), 'audio');
   const out = createWriteStream(dest);
-  // Identify the song as the bytes go past. Doing it here costs nothing —
-  // they are already in memory — and avoids re-reading 40 MB from disk later
-  // just to answer "has this person already paid for this one?".
+  // Identify the song as the bytes go past. Doing it here costs nothing:
+  // they are already in memory, and re-reading 40 MB later would not be.
   const digest = crypto.createHash('sha256');
   let written = 0;
 
@@ -186,15 +180,7 @@ export function enqueue(job) {
   job.state = 'queued';
   job.controller = new AbortController();
 
-  // Signed-in people go ahead of anonymous ones. Anonymous alignment is a
-  // free sample; it should never make somebody with an account wait.
-  if (job.user) {
-    const firstAnon = queue.findIndex((id) => !jobs.get(id)?.user);
-    if (firstAnon === -1) queue.push(job.id);
-    else queue.splice(firstAnon, 0, job.id);
-  } else {
-    queue.push(job.id);
-  }
+  queue.push(job.id);
   updateQueuePositions();
   emit(job, { message: queueMessage(job) });
   drain();
@@ -342,7 +328,6 @@ export function publicJob(job, { includeResult = false } = {}) {
     audioBytes: job.audioBytes,
     audioName: job.audioName,
     songHash: job.songHash,
-    unlocked: Boolean(job.unlocked),
     createdAt: job.createdAt,
     expiresAt: job.createdAt + LIMITS.retentionMs,
   };
@@ -432,18 +417,15 @@ async function dirSize(dir) {
 
 const ipHistory = new Map();
 
-export function rateLimit(ip, signedIn = false) {
+export function rateLimit(ip) {
   const now = Date.now();
   const hour = 60 * 60 * 1000;
-  const cap = signedIn ? LIMITS.maxJobsPerIpPerHour : LIMITS.maxAnonJobsPerIpPerHour;
+  const cap = LIMITS.maxJobsPerIpPerHour;
 
   const history = (ipHistory.get(ip) || []).filter((t) => now - t < hour);
   if (history.length >= cap) {
     const wait = Math.ceil((hour - (now - history[0])) / 60000);
-    const error = badRequest(signedIn
-      ? `That's ${cap} songs this hour. Try again in ${wait} minutes.`
-      : `That's ${cap} songs this hour without an account. Sign in to do more, `
-        + `it's free, or try again in ${wait} minutes.`);
+    const error = badRequest(`That's ${cap} songs this hour. Try again in ${wait} minutes.`);
     error.status = 429;
     throw error;
   }

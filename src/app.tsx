@@ -17,10 +17,6 @@ import { buildAudioTrack, type AudioTrack } from './audio/track';
 import { decodeAudioFile } from './encode/output';
 import { detectSupport, type Support } from './encode/support';
 import { ensureFont, fontOpticalFor, fontStackFor } from './lib/fonts';
-import {
-  initAuth, onAuthChange, signOut, stubRestore, stubSignOut, tidyCallbackUrl,
-  type AuthUser,
-} from './lib/auth';
 import { loadReference, mergeColours, releaseReference, type Reference } from './lib/images';
 import {
   activeSession, clearActive, deleteSession, getSession, listSessions, markActive,
@@ -28,6 +24,7 @@ import {
 } from './lib/sessions';
 // `track` is taken by the AudioTrack state below.
 import { track as trackEvent } from './lib/analytics';
+import { CONTACT_HREF, CONTACT_LABEL } from './lib/contact';
 import type { Scene } from './render/engine';
 
 import { CardHead, formatBytes, formatTime, Notice, Spinner } from './ui/bits';
@@ -36,7 +33,6 @@ import { DesignControls } from './ui/DesignControls';
 import { ExportDialog } from './ui/ExportDialog';
 import { HeroCanvas } from './ui/HeroCanvas';
 import { Preview, type PreviewHandle } from './ui/Preview';
-import { SignIn } from './ui/SignIn';
 import { StylePanel } from './ui/StylePanel';
 
 /**
@@ -88,11 +84,6 @@ export function App() {
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [resuming, setResuming] = useState(false);
 
-  const [account, setAccount] = useState<api.Account | null>(null);
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [signInFor, setSignInFor] = useState<string | null>(null);
-  const [unlocked, setUnlocked] = useState(false);
-
   const tokenRef = useRef<string | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const watcherRef = useRef<{ close: () => void } | null>(null);
@@ -114,44 +105,12 @@ export function App() {
         if (cancelled) return;
         setConfig(serverConfig);
         setSupport(capability);
-
-        if (serverConfig.auth?.devStub) {
-          setAuthUser(stubRestore());
-        } else {
-          await initAuth(serverConfig);
-          tidyCallbackUrl();
-        }
       } catch (e) {
         if (!cancelled) setBootError((e as Error).message);
       }
     })();
     return () => { cancelled = true; };
   }, []);
-
-  /* Sessions can start, refresh and end at any moment, including on the
-     round trip back from a magic link. One subscription, one source of truth. */
-  useEffect(() => onAuthChange(setAuthUser), []);
-
-  /* Whoever is signed in, ask the server what they have. The browser never
-     works this out for itself — the credit balance lives behind the API. */
-  useEffect(() => {
-    if (!authUser) { setAccount(null); return; }
-    let cancelled = false;
-    api.getMe()
-      .then((me) => { if (!cancelled) setAccount(me.account); })
-      .catch(() => { if (!cancelled) setAccount(null); });
-    return () => { cancelled = true; };
-  }, [authUser]);
-
-  /* A song already paid for stays paid for, even in a brand new job. */
-  useEffect(() => {
-    if (!authUser || !jobIdRef.current || !tokenRef.current || screen !== 'studio') return;
-    let cancelled = false;
-    api.getJob(jobIdRef.current, tokenRef.current)
-      .then((view) => { if (!cancelled) setUnlocked(Boolean(view.unlocked)); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [authUser, screen]);
 
   /* The interface wears the song's accent colour once one exists. */
   useEffect(() => {
@@ -291,7 +250,6 @@ export function App() {
       setJob(fetched);
       setAlignment(fetched.alignment);
       setPlan(fetched.plan);
-      setUnlocked(Boolean(fetched.unlocked));
       setScreen('studio');
       markActive(id);
       return true;
@@ -304,8 +262,7 @@ export function App() {
   }, []);
 
   /* List what this browser still has, and reopen whatever was open when the
-     page was last left — which is how the round trip through Google stopped
-     losing people's work. */
+     page was last left, so a reload does not lose anyone's work. */
   useEffect(() => {
     if (!config) return;
     let cancelled = false;
@@ -338,7 +295,7 @@ export function App() {
     setScreen('working');
     setUploadFraction(0);
     const startedAt = performance.now();
-    trackEvent('generate_started', { signed_in: Boolean(authUser), pictures: references.length });
+    trackEvent('generate_started', { pictures: references.length });
 
     try {
       const created = await api.createJob(lyrics, currentPrefs());
@@ -347,7 +304,7 @@ export function App() {
       setJob(created.job);
 
       await api.uploadAudio(created.id, created.token, file, setUploadFraction);
-      const started = await api.startJob(created.id, created.token);
+      const started = await api.startJob(created.id, created.token, audioBuffer?.duration);
       setJob(started.job);
 
       const watcher = api.watchJob(created.id, created.token, setJob);
@@ -364,8 +321,7 @@ export function App() {
       setScreen('studio');
 
       // Keep the whole thing on disk before anything can navigate away from
-      // it. Signing in to download is a full page load, and until this existed
-      // that load discarded the video the person was trying to download.
+      // it, so a reload or a closed tab does not lose the video.
       void saveSession(
         {
           id: created.id,
@@ -437,23 +393,15 @@ export function App() {
     }
   };
 
-  const unlock = async () => {
-    if (!jobIdRef.current || !tokenRef.current) throw new Error('No song to unlock.');
-    const result = await api.unlockJob(jobIdRef.current, tokenRef.current);
-    setUnlocked(true);
-    setAccount((existing) => (existing
-      ? { ...existing, remaining: result.remaining, unlocked: existing.unlocked + (result.already ? 0 : 1) }
-      : existing));
-  };
-
   const requestExport = () => {
     previewRef.current?.pause();
-    if (config?.auth?.enabled && !authUser) {
-      setSignInFor('Sign in to download your video');
-      trackEvent('signin_prompted', { from: 'export' });
-      return;
-    }
     setExporting(true);
+  };
+
+  const reportDownload = (info: api.DownloadInfo) => {
+    if (jobIdRef.current && tokenRef.current) {
+      api.reportDownload(jobIdRef.current, tokenRef.current, info);
+    }
   };
 
   const patchPlan = (patch: Partial<Plan>) => {
@@ -478,7 +426,6 @@ export function App() {
     setDirector(null);
     setTrack(null);
     setCurrentTime(0);
-    setUnlocked(false);
   };
 
   /* -------------------------------- views ------------------------------- */
@@ -530,43 +477,6 @@ export function App() {
           <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 16 }} onClick={startOver}>
             New song
           </button>
-        )}
-
-        {config.auth?.enabled && (
-          <div className="account">
-            {authUser ? (
-              <>
-                <span className="credits" data-empty={account?.remaining === 0 ? 'true' : 'false'} title={
-                  account?.resets_at
-                    ? `Resets ${new Date(account.resets_at).toLocaleDateString()}`
-                    : undefined
-                }>
-                  <b className="mono">{account ? account.remaining : '-'}</b>
-                  <span>left</span>
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => {
-                    if (config.auth?.devStub) stubSignOut();
-                    else void signOut();
-                    setUnlocked(false);
-                  }}
-                  title={authUser.email ?? undefined}
-                >
-                  Sign out
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                className="btn btn-sm"
-                onClick={() => setSignInFor('Sign in to videolyrics')}
-              >
-                Sign in
-              </button>
-            )}
-          </div>
         )}
       </header>
 
@@ -694,13 +604,15 @@ export function App() {
       </main>
 
       <footer className="site shell">
+        <p className="contact">
+          A small experiment by Carlos Martinez. Feedback, ideas or just to say hi:{' '}
+          <a href={CONTACT_HREF}>{CONTACT_LABEL}</a>
+        </p>
         <p>
           Songs and lyrics stay yours. Uploads are deleted after {config.limits.retentionHours} hours,
           reference pictures never leave your browser, and the video is encoded on your own machine.
         </p>
-        {/* Plain anchors, not router links: these are static pages served by
-            Caddy, and Google's OAuth consent screen requires both to be
-            reachable at a stable URL on this domain. */}
+        {/* Plain anchors, not router links: these are static pages. */}
         <p className="legal-links">
           <a href="/privacy.html">Privacy Policy</a>
           <a href="/terms.html">Terms of Service</a>
@@ -713,20 +625,8 @@ export function App() {
           plan={plan}
           audioFile={file}
           audioBuffer={audioBuffer}
-          unlocked={unlocked || !config.auth?.enabled}
-          creditsRemaining={account ? account.remaining : null}
-          resetsAt={account?.resets_at ?? null}
-          onUnlock={unlock}
+          onExported={reportDownload}
           onClose={() => setExporting(false)}
-        />
-      )}
-
-      {signInFor && (
-        <SignIn
-          config={config}
-          reason={signInFor}
-          onClose={() => setSignInFor(null)}
-          onStubSignedIn={() => setAuthUser(stubRestore())}
         />
       )}
     </>
@@ -850,14 +750,13 @@ function Setup(props: {
 
       {/* Left is what the video is made of, right is how it looks. The design
           controls are the same component the studio uses, offered here so the
-          first render is already the one you wanted — regenerating to change a
-          font costs a minute and a credit's worth of patience. */}
+          first render is already the one you wanted: regenerating to change a
+          font costs a minute. */}
       <div className="composer">
         <div className="composer-main">
           {sessions.length > 0 && (
             /* Everything this browser has made that the server has not yet
-               expired. Signing in to download used to lose the video outright;
-               now the round trip reopens it, and anything else is one click. */
+               expired, one click away. */
             <section className="card">
               <CardHead
                 title="Pick up where you left off"
@@ -894,7 +793,6 @@ function Setup(props: {
               </div>
               <p className="hint" style={{ marginTop: 10 }}>
                 Kept in this browser only, and only while the server still holds the song.
-                Re-exporting one of these never costs another credit.
               </p>
             </section>
           )}
@@ -1082,10 +980,8 @@ function Setup(props: {
         </div>
       </div>
 
-      {/* Google's OAuth branding review rejected this app three times over for
-          a home page that never said what the app was called, what it did, or
-          why it asked to sign in. All three answers live here, in the name the
-          consent screen uses. */}
+      {/* Says plainly what the app is called, what it does and what happens
+          to your files. */}
       <section className="about" id="about">
         <h2>About Video Lyrics</h2>
         <div className="about-grid">
@@ -1108,19 +1004,16 @@ function Setup(props: {
             </p>
           </div>
           <div>
-            <h3>Why it asks you to sign in</h3>
+            <h3>Free, no account</h3>
             <p>
-              Anyone can upload a song and preview the result without an account. An account is
-              needed only to download the MP4, because each person gets five free videos a month and
-              we need somewhere to count them. Signing in with Google tells us your name, email
-              address and profile picture, and we use the email address purely to identify your
-              account and its remaining credits. Nothing is sold or shared for advertising.
+              It is free to use and there is nothing to sign up for. Upload a song, preview it, and
+              download the MP4. Nothing is sold or shared for advertising.
             </p>
           </div>
           <div>
             <h3>What happens to your files</h3>
             <p>
-              Uploaded audio is deleted after six hours. Reference pictures never leave your browser
+              Uploaded audio is deleted after {config.limits.retentionHours} hours. Reference pictures never leave your browser
               and only the colours pulled out of them are sent. The finished video stays on your
               machine. Full detail is in the{' '}
               <a href="/privacy.html">Privacy Policy</a> and{' '}

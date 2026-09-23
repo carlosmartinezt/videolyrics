@@ -12,8 +12,8 @@
 #
 # Nothing runs out of this repo, so it can live anywhere and be deleted after.
 # The pieces a release must not replace are in $VIDEOLYRICS_RUNTIME, default
-# ~/videolyrics-runtime: .env, the jobs in flight, the aligner venv and the
-# model cache. See its README.
+# ~/data/videolyrics: the jobs in flight, the aligner venv and the model
+# cache. Secrets are in ~/data/secrets/videolyrics.env.
 #
 # Neither step needs sudo.
 #
@@ -25,7 +25,34 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
 
-. "$HOME/bin/deploy-lib.sh"
+[[ -f "$HOME/.config/deploy.env" ]] && . "$HOME/.config/deploy.env"
+: "${PUBLIC_ROOT:?PUBLIC_ROOT is not set. Put it in ~/.config/deploy.env}"
+
+# Carried here rather than shared, so this repo deploys on its own.
+assert_unit_workdir() {
+  local unit="$1" expected="$2" scope="${3:-}"
+  local actual
+  actual=$(systemctl $scope show -p WorkingDirectory --value "$unit" 2>/dev/null)
+  # systemd reports the bare path, or "-/path" when the unit marked it optional.
+  actual="${actual#-}"
+  if [[ -z "$actual" ]]; then
+    echo "Could not read WorkingDirectory from $unit. Is it installed?" >&2
+    return 1
+  fi
+  if [[ "$actual" != "$expected" ]]; then
+    cat >&2 <<MSG
+Deploy root drift.
+
+  $unit runs from     : $actual
+  this deploy targets : $expected
+
+systemd cannot read PUBLIC_ROOT, so the unit's WorkingDirectory= has to be
+edited to match by hand. Releasing now would build into a directory nothing
+serves, and the site would silently keep running the old build.
+MSG
+    return 1
+  fi
+}
 
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
@@ -36,7 +63,8 @@ RUN_TESTS=1
 
 API_DIR="$PUBLIC_ROOT/videolyrics-api"
 WEB_DIR="$PUBLIC_ROOT/videolyrics"
-RUNTIME="${VIDEOLYRICS_RUNTIME:-$HOME/videolyrics-runtime}"
+RUNTIME="${VIDEOLYRICS_RUNTIME:-$HOME/data/videolyrics}"
+ENV_FILE="$HOME/data/secrets/videolyrics.env"
 PYTHON="$RUNTIME/aligner/.venv/bin/python"
 
 step "Checking prerequisites"
@@ -50,7 +78,7 @@ done
     --extra-index-url https://download.pytorch.org/whl/cpu -r aligner/requirements.txt"
   exit 1
 }
-[[ -f "$RUNTIME/.env" ]] || red "warning: no $RUNTIME/.env — accounts, credits and the download gate will be off" 
+[[ -f "$ENV_FILE" ]] || red "warning: no $ENV_FILE, so no art director and no email alerts"
 FFMPEG="${FFMPEG_BIN:-$HOME/bin/ffmpeg}"
 [[ -x "$FFMPEG" ]] || { red "no ffmpeg at $FFMPEG — see README"; exit 1; }
 green "node $(node --version), python $("$PYTHON" --version | cut -d' ' -f2), ffmpeg present"

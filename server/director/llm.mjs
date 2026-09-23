@@ -15,6 +15,7 @@ import { TEMPLATES } from '../../shared/templates.mjs';
 import { PALETTES } from '../../shared/palettes.mjs';
 import { FONTS } from '../../shared/templates.mjs';
 import { CUE_TREATMENTS, HIGHLIGHT_STYLES, TEXT_CASES, normalisePlan } from '../../shared/plan.mjs';
+import { notifyAtMostEvery } from '../notify.mjs';
 
 export const PROVIDERS = {
   deepseek: {
@@ -31,6 +32,7 @@ export const PROVIDERS = {
 
 const MAX_LYRIC_CHARS = 6000;
 const REQUEST_TIMEOUT_MS = 45_000;
+const OUT_OF_CREDIT_ALERT_EVERY_MS = 6 * 60 * 60 * 1000;
 
 export function directorConfig(env = process.env) {
   const providerKey = (env.DIRECTOR_PROVIDER || 'deepseek').toLowerCase();
@@ -187,7 +189,17 @@ export async function refinePlan({ alignment, lyricsText, plan, prefs, mood, con
     });
 
     if (!response.ok) {
-      const detail = truncate(await response.text().catch(() => ''), 200);
+      const raw = await response.text().catch(() => '');
+      const detail = truncate(raw, 200);
+      // The deterministic plan still goes out; this only tells the owner the
+      // model has stopped helping and needs topping up.
+      if (response.status === 402 || /insufficient balance/i.test(raw)) {
+        notifyAtMostEvery('llm-out-of-credit', OUT_OF_CREDIT_ALERT_EVERY_MS, {
+          subject: `videolyrics: ${config.providerName} is out of credit`,
+          text: `${config.providerName} returned ${response.status}: ${truncate(raw, 1000)}\n\n`
+            + 'Videos are still being made with the rule-based design until it is topped up.',
+        });
+      }
       return { plan, used: false, reason: `${config.providerName} returned ${response.status}: ${detail}` };
     }
 

@@ -7,8 +7,8 @@ alignment — a CTC acoustic model constrained to the lyrics you pasted — then
 designs the video from what it heard and what the words say, and lets your
 browser encode the MP4.
 
-Anyone can upload a song and watch the result. Downloading it needs a free
-account, and costs one of five monthly credits.
+Free for anyone: no sign-up, no account, no limit on downloads. The only cap
+is 5 songs per hour per IP, because alignment is the one expensive thing here.
 
 Live at **https://videolyrics.org**
 
@@ -48,86 +48,24 @@ decoder but no AAC *encoder*, so re-encoding would have failed for a large
 share of users. Instead the uploaded file's audio stream is muxed into the MP4
 untouched: no encoder dependency, no generation loss, near-instant.
 
-## Accounts and credits
+## No accounts
 
-Supabase owns identity. Everything decided *because* of identity lives in
-`server/accounts.mjs` and `supabase/migrations/0001_accounts_and_credits.sql`.
+There is no sign-in and no database. Every job gets its own random token,
+sent back in `X-Job-Token` (or `?token=` on the progress stream), and that
+token is the only thing that lets a caller touch that job.
 
-**A credit buys a song, not a download.** It is spent at the first export and
-keyed by the sha256 of the uploaded audio, so re-exporting at another
-resolution, restyling, or coming back tomorrow with the same file is free.
-Fixing a typo in the lyrics and re-aligning is free too — the hash covers the
-audio only, deliberately.
+Alignment is open to anyone, so the per-IP cap (`MAX_JOBS_PER_IP`, default 5
+an hour) is what keeps one script from taking both cores all day.
 
-**This server holds no privileged database credential.** The obvious design
-takes a user id and calls the database as an admin, which means one leaked key
-can touch anyone's account. Instead every function reads `auth.uid()` out of
-the caller's own JWT and is granted to `authenticated`, and the server simply
-forwards the signed-in person's access token. There is no service-role key to
-leak. The worst a hostile caller can do by hitting `consume_credit` directly is
-spend their own credit on their own account.
+## Email alerts
 
-**The browser cannot write account state.** `profiles` and `unlocks` have
-`select` policies and no others; the only writes are inside security-definer
-functions that confine themselves to `auth.uid()`. Verified against the live
-project, not just asserted: `npm run verify:supabase` checks that an anonymous
-caller gets 401 on both functions, that listing profiles returns nothing, and
-that a signed-in session PATCHing its own `credits_remaining` to 9999 changes
-no rows.
-
-Two credentials travel to the API and they must not share a header:
-
-| | |
-|---|---|
-| `Authorization: Bearer` | the person's Supabase session — *who you are* |
-| `X-Job-Token` | a capability for one job — *what you may touch* |
-
-Anonymous visitors can align and preview. That is a deliberate choice about
-the funnel and it leaves alignment — the only expensive thing here — reachable
-without an account, so it is capped much harder per IP (3/hour against 20),
-and signed-in jobs jump the queue ahead of anonymous ones.
-
-### Setting it up
-
-1. Create a **new** Supabase project (not the journal one).
-2. Apply the schema. The database password is needed for this and nothing
-   else, so it never goes in `.env`:
-
-   ```sh
-   DATABASE_URL="postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres" \
-     PGSSLROOTCERT=scripts/.supabase-ca.pem npm run migrate
-   ```
-
-3. Put `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` into `.env`. That is the
-   complete list — see above for why there is no secret key.
-4. Supabase → Authentication → URL Configuration: set the site URL and add
-   the deployment as a redirect URL.
-5. For Google: add `https://<ref>.supabase.co/auth/v1/callback` as an
-   authorised redirect URI in Google Cloud, then paste the client id and
-   secret into Supabase → Authentication → Providers → Google. Nothing to
-   change here — the button appears on its own, because which providers are
-   offered is read from Supabase's `/auth/v1/settings` rather than declared
-   in our config. A flag would have to be flipped at the same moment as the
-   dashboard, and getting that wrong shows a button that dead-ends.
-6. Check it: `SUPABASE_URL=… SUPABASE_PUBLISHABLE_KEY=… node
-   scripts/verify-supabase.mjs <email> <password>` — needs a password user,
-   which `scripts/create-test-user.mjs` can make.
-
-The Caddy `connect-src` must allow `https://*.supabase.co` or sign-in fails
-with a bare network error and no message, because a CSP block is invisible to
-`fetch()`. `ops/deploy.sh` checks the live header for this drift.
-
-Raising someone's allowance later is one statement:
-
-```sql
-update public.profiles set credits_per_period = 50, credits_remaining = 50
- where email = 'someone@example.com';
-```
-
-Local development needs none of this. `AUTH_DEV_STUB=1` swaps Supabase for an
-in-memory stub — any email signs in, no mail is sent, and the whole gate,
-counter and monthly roll behave identically. It refuses to arm when `NODE_ENV`
-is production.
+`server/notify.mjs` emails the owner through Resend when someone starts a
+video, when someone downloads one (the browser reports it to
+`POST /api/jobs/:id/downloaded`), and when the art director's provider says it
+is out of credit (at most once every 6 hours). At most 60 emails a day; the
+last one says the rest are muted until tomorrow. Set `RESEND_API_KEY` to turn
+it on; `NOTIFY_TO` and `NOTIFY_FROM` override the defaults. Without a key it
+logs and skips, and it never slows or fails a request.
 
 ## The watermark
 
@@ -147,9 +85,8 @@ minutes of both cores per song.
 aligner/      Python. ffmpeg → features → forced alignment → structure.
               Runs as a subprocess, one job at a time.
 server/       Node, no dependencies. Job queue, SSE progress, the director.
-  accounts.mjs  Sessions, credits, unlocks — and a dev stub for all three.
+  notify.mjs  Email alerts to the owner, through Resend.
   director/   Deterministic art direction, plus an optional model pass.
-supabase/     The schema. Read the SQL comments; the rules live there.
 shared/       Imported by both server and browser: templates, palettes,
               and the plan schema + validator.
 src/          The web app. render/ is the renderer; encode/ is WebCodecs.
@@ -225,17 +162,15 @@ tar xf ff.tar.xz && cp ffmpeg-*/bin/{ffmpeg,ffprobe} ~/bin/
 ### Tests
 
 ```sh
-npm test                                    # plan validation, director, credits
+npm test                                    # plan validation, director, email alerts
 aligner/.venv/bin/python -m unittest discover -s aligner -p "test_*.py"
 node scripts/e2e.mjs --audio song.mp3 --lyrics words.txt   # real Chrome, real MP4
 ```
 
 The end-to-end script drives a real browser through the whole flow and probes
 the resulting file with ffprobe, because "no exception was thrown" is not the
-same as "this MP4 plays". With `AUTH_DEV_STUB=1` on the API it also checks
-that an anonymous export is refused, that signing in grants five credits, that
-exporting spends exactly one, and that the watermark is actually burned into
-the decoded frame.
+same as "this MP4 plays". It also checks that the watermark is actually
+burned into the decoded frame.
 
 ### Render lab
 
@@ -263,9 +198,7 @@ warms the models, and restarts the systemd **user** unit — no sudo anywhere.
 
 `videolyrics.org` is canonical, because that is what is burned into every
 exported frame. `www.videolyrics.org` and the original
-`videolyrics.carlosmartinezt.com` both redirect to it, so there is one origin
-— which also means one place for a browser session to live and one entry in
-Supabase's redirect allow-list.
+`videolyrics.carlosmartinezt.com` both redirect to it, so there is one origin.
 
 Changing the Caddy configuration is the one step that needs root:
 
@@ -348,8 +281,7 @@ Switching over is `systemctl --user stop videolyrics-api` then
 | Retention | Uploads deleted after 6 hours |
 | Export | Needs a Chromium browser. Firefox and Safari can do everything except the final encode. |
 | Reference pictures | Never uploaded. Only the hex colours extracted from them are sent. |
-| Free credits | 5 songs per person per month, resetting on the 1st |
-| Anonymous | May align and preview, 3 songs/hour per IP, cannot download |
+| Songs per hour | 5 per IP (`MAX_JOBS_PER_IP`) |
 
 The English model (`WAV2VEC2_ASR_BASE_960H`) is picked automatically when the
 lyrics look English, the multilingual one (`MMS_FA`) otherwise; `mms` is twice

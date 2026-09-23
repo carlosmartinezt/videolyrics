@@ -4,7 +4,7 @@
  *   node scripts/thumbnails.mjs
  *
  * These are what the "Look" cards show, so somebody can see what Filmstrip or
- * Neon actually looks like before spending a minute and a credit finding out.
+ * Neon actually looks like before spending a minute finding out.
  * They are generated rather than hand-made because a template's look is defined
  * by its renderer — a screenshot cannot drift from the code, a mockup can.
  *

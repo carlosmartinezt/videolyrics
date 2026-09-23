@@ -4,8 +4,8 @@
  * The loader lives in index.html as an external script; the configuration
  * lives here rather than in an inline `<script>` block. That is deliberate:
  * allowing `'unsafe-inline'` in script-src to accommodate four lines of setup
- * would weaken the policy protecting a page that handles people's files and
- * sign-in tokens. gtag.js drains whatever is already in `dataLayer` when it
+ * would weaken the policy protecting a page that handles people's files.
+ * gtag.js drains whatever is already in `dataLayer` when it
  * loads, so running from the bundle is equivalent.
  *
  * What is sent is deliberately thin. No lyrics, no song titles, no file names,
@@ -45,10 +45,8 @@ export function initAnalytics(): void {
 
   gtag('js', new Date());
   gtag('config', MEASUREMENT_ID, {
-    // The address bar carries a magic-link token on the way back from
-    // sign-in. tidyCallbackUrl() strips it, but the page can load before that
-    // runs, and a token in an analytics payload would outlive the session it
-    // belongs to.
+    // Origin and path only: a query string or fragment can carry anything,
+    // and none of it belongs in an analytics payload.
     page_location: window.location.origin + window.location.pathname,
   });
 }
@@ -59,7 +57,6 @@ export type AnalyticsEvent =
   | 'generate_started'
   | 'generate_failed'
   | 'video_ready'
-  | 'signin_prompted'
   | 'redesigned'
   | 'export_started'
   | 'export_finished'

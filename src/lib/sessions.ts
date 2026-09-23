@@ -1,11 +1,9 @@
 /**
  * Work in progress, kept across a page load.
  *
- * Signing in with Google is a full page navigation: the browser leaves for
- * accounts.google.com and comes back to a brand new document. Everything the
- * app had in memory — the decoded audio, the alignment, the plan — is gone by
- * the time it returns, which meant clicking "Download MP4" and signing in
- * threw away the very video you were trying to download.
+ * A reload or a closed tab starts a brand new document. Everything the app
+ * had in memory (the decoded audio, the alignment, the plan) is gone, and
+ * with it the video you were working on.
  *
  * The audio is the hard part. It is tens of megabytes and a File cannot be
  * serialised, which rules out localStorage; IndexedDB stores Blobs natively

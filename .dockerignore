@@ -3,7 +3,7 @@
 # aligner/.venv and aligner/.torch are the host's copies of the very things the
 # image builds for itself — 2.8 GB that would otherwise be copied in and then
 # shadowed. dist/ and public/fonts are build output. data/ is people's uploads.
-# .env holds the Supabase key and is mounted at run time, never baked in: a
+# .env holds the API keys and is mounted at run time, never baked in: a
 # secret compiled into an image leaks to anyone who can pull it.
 
 .git
@@ -18,7 +18,6 @@ public/fonts/*.woff2
 .env
 .env.*
 !.env.example
-supabase
 ops
 deploy
 lab.html

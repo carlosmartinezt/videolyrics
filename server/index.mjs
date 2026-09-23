@@ -9,14 +9,13 @@
  * Nothing here renders video. The browser does that with WebCodecs; this
  * server only listens to the song and designs the video.
  *
- *   GET    /api/me                   Supabase bearer      -> account + credits
  *   POST   /api/jobs                 {lyrics, prefs}      -> {id, token}
  *   PUT    /api/jobs/:id/audio       raw audio body       -> {bytes}
  *   POST   /api/jobs/:id/start                            -> queued
  *   GET    /api/jobs/:id/events      server-sent events
  *   GET    /api/jobs/:id             ?full=1              -> job (+ result)
  *   POST   /api/jobs/:id/redirect    {prefs}              -> new plan
- *   POST   /api/jobs/:id/unlock      spends one credit    -> {remaining}
+ *   POST   /api/jobs/:id/downloaded  {format, aspect, ...} -> ok (emails the owner)
  *   DELETE /api/jobs/:id
  *   GET    /api/config
  *   GET    /api/health
@@ -28,9 +27,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import * as store from './jobs.mjs';
-import {
-  accountState, authConfig, consumeCredit, enabledProviders, isUnlocked, userFromToken,
-} from './accounts.mjs';
+import { notify } from './notify.mjs';
 import { directorConfig, watermarkConfig } from './director/index.mjs';
 import { TEMPLATES, FONTS, ASPECTS } from '../shared/templates.mjs';
 import { PALETTES, MOOD_VOCABULARY } from '../shared/palettes.mjs';
@@ -82,7 +79,7 @@ const server = http.createServer(async (req, res) => {
       if (!allowed) return void res.writeHead(403).end();
       res.writeHead(204, {
         'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'access-control-allow-headers': 'authorization, content-type, x-job-token, x-filename',
+        'access-control-allow-headers': 'content-type, x-job-token, x-filename',
         'access-control-max-age': '86400',
       });
       return res.end();
@@ -94,17 +91,7 @@ const server = http.createServer(async (req, res) => {
 
     if (parts[1] === 'config' && req.method === 'GET') {
       const config = directorConfig();
-      const auth = authConfig();
-      const providers = await enabledProviders(auth);
       return json(res, 200, {
-        auth: {
-          enabled: auth.enabled,
-          url: auth.url || null,
-          anonKey: auth.anonKey || null,
-          google: providers.google,
-          freeCredits: auth.freeCredits,
-          devStub: auth.stub,
-        },
         watermark: watermarkConfig(),
         limits: {
           maxAudioBytes: store.LIMITS.maxAudioBytes,
@@ -126,26 +113,15 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
-    /* GET /api/me */
-    if (parts[1] === 'me' && req.method === 'GET') {
-      const user = await userFromToken(bearer(req));
-      if (!user) return json(res, 401, { error: 'Not signed in.' });
-      const state = await accountState(user);
-      return json(res, 200, { user: { id: user.id, email: user.email }, account: state });
-    }
-
     if (parts[1] !== 'jobs') return notFound(res);
 
     /* POST /api/jobs */
     if (parts.length === 2 && req.method === 'POST') {
       const ip = clientIp(req);
-      // Anonymous visitors may align and preview; the account only gates the
-      // download. They get a much smaller per-IP allowance, because alignment
-      // is the only expensive thing here and nothing else caps it.
-      const user = await userFromToken(bearer(req));
-      store.rateLimit(ip, Boolean(user));
+      // Alignment is the only expensive thing here and nothing else caps it.
+      store.rateLimit(ip);
       const body = await readJson(req);
-      const job = await store.createJob({ lyrics: body.lyrics, prefs: body.prefs, ip, user });
+      const job = await store.createJob({ lyrics: body.lyrics, prefs: body.prefs, ip });
       return json(res, 201, { id: job.id, token: job.token, job: store.publicJob(job) });
     }
 
@@ -153,11 +129,8 @@ const server = http.createServer(async (req, res) => {
     const job = id && store.getJob(id);
     if (!job) return json(res, 404, { error: 'No such job. It may have expired.' });
 
-    // Two independent credentials, and they must not share a header.
-    // `Authorization: Bearer` is the person's Supabase session, which is what
-    // that header conventionally means and what /unlock needs. The job token
-    // is our own capability for one job — it travels in X-Job-Token, or in
-    // the query string for the SSE stream, which cannot set headers.
+    // The job token is a capability for one job. It travels in X-Job-Token,
+    // or in the query string for the SSE stream, which cannot set headers.
     const jobToken = req.headers['x-job-token'] || url.searchParams.get('token');
     if (!store.authorised(job, jobToken)) {
       return json(res, 403, { error: 'Wrong or missing job token.' });
@@ -174,7 +147,9 @@ const server = http.createServer(async (req, res) => {
 
     /* POST /api/jobs/:id/start */
     if (parts[3] === 'start' && req.method === 'POST') {
+      const body = await readJson(req);
       store.enqueue(job);
+      notifyStarted(req, job, Number(body.durationSeconds) || 0);
       return json(res, 202, { job: store.publicJob(job) });
     }
 
@@ -190,52 +165,15 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, result);
     }
 
-    /* POST /api/jobs/:id/unlock — spend a credit to allow the download */
-    if (parts[3] === 'unlock' && req.method === 'POST') {
-      const auth = authConfig();
-      if (!auth.enabled) {
-        return json(res, 503, { error: 'Accounts are not configured on this server.' });
-      }
-      const user = await userFromToken(bearer(req));
-      if (!user) {
-        return json(res, 401, { error: 'Sign in to download.' });
-      }
-      if (!job.songHash) {
-        return json(res, 409, { error: 'This job has no audio yet.' });
-      }
-
-      const title = job.plan?.title?.title || job.audioName || null;
-      const result = await consumeCredit(user, job.songHash, title);
-
-      if (!result?.ok) {
-        const status = result?.reason === 'no_credits' ? 402 : 400;
-        return json(res, status, {
-          error: result?.reason === 'no_credits'
-            ? 'You have used this month\'s credits.'
-            : 'Could not unlock this song.',
-          reason: result?.reason || 'unknown',
-          remaining: result?.remaining ?? 0,
-          resetsAt: result?.resets_at ?? null,
-        });
-      }
-
-      job.unlocked = true;
-      return json(res, 200, {
-        ok: true,
-        already: Boolean(result.already),
-        remaining: result.remaining,
-        resetsAt: result.resets_at ?? null,
-      });
+    /* POST /api/jobs/:id/downloaded: the browser finished an export */
+    if (parts[3] === 'downloaded' && req.method === 'POST') {
+      const body = await readJson(req);
+      notifyDownloaded(req, job, body);
+      return json(res, 200, { ok: true });
     }
 
     /* GET /api/jobs/:id */
     if (parts.length === 3 && req.method === 'GET') {
-      const viewer = await userFromToken(bearer(req));
-      if (viewer && job.songHash && !job.unlocked) {
-        // Somebody who already paid for this song on another day should not
-        // be asked again just because this is a fresh job.
-        job.unlocked = await isUnlocked(viewer, job.songHash);
-      }
       return json(res, 200, store.publicJob(job, { includeResult: url.searchParams.get('full') === '1' }));
     }
 
@@ -319,9 +257,9 @@ function streamEvents(req, res, job) {
  * its Allow-Origin header to another.
  *
  * There is deliberately no Access-Control-Allow-Credentials: nothing here
- * rides on a cookie. The Supabase session and the job token are both headers
- * the client sets by hand, so a cross-site request that forgot them is simply
- * an unauthenticated request, and CSRF has nothing to ride in on.
+ * rides on a cookie. The job token is a header the client sets by hand, so a
+ * cross-site request without it is simply refused, and CSRF has nothing to
+ * ride in on.
  */
 function cors(req, res) {
   res.setHeader('vary', 'Origin');
@@ -371,17 +309,64 @@ async function readJson(req) {
   }
 }
 
-function bearer(req) {
-  const header = req.headers.authorization || '';
-  return header.startsWith('Bearer ') ? header.slice(7) : null;
-}
-
 function clientIp(req) {
   // Caddy is the only thing in front of us and it sets X-Forwarded-For; the
   // last hop is the one it observed, so trust that and nothing else.
   const forwarded = String(req.headers['x-forwarded-for'] || '');
   const hops = forwarded.split(',').map((s) => s.trim()).filter(Boolean);
   return hops.length ? hops[hops.length - 1] : req.socket.remoteAddress || 'unknown';
+}
+
+/* --------------------------------- alerts -------------------------------- */
+
+// Emails to the owner. notify() never throws and is never awaited here, so a
+// slow or broken mail service cannot hold up a request.
+
+function notifyStarted(req, job, seconds) {
+  notify({
+    subject: 'videolyrics: someone started a video',
+    text: [
+      `Song file: ${songFile(job)}`,
+      `First line: ${job.firstLine || '(none)'}`,
+      `Length: ${seconds > 0 ? formatSeconds(seconds) : 'not known'}`,
+      ...whereAndWhen(req, job),
+    ].join('\n'),
+  });
+}
+
+function notifyDownloaded(req, job, body) {
+  const b = body && typeof body === 'object' ? body : {};
+  const clean = (v) => String(v ?? '').replace(/[^\w .:x-]/g, '').slice(0, 20);
+  const size = b.width && b.height ? `${clean(b.width)}x${clean(b.height)}` : '';
+  notify({
+    subject: 'videolyrics: someone downloaded a video',
+    text: [
+      `Song file: ${songFile(job)}`,
+      `Title: ${job.plan?.title?.title || '(none)'}`,
+      `Export: ${[clean(b.format), clean(b.aspect), size].filter(Boolean).join(', ') || 'not given'}`,
+      `Length: ${Number(b.seconds) > 0 ? formatSeconds(Number(b.seconds)) : 'not given'}`,
+      ...whereAndWhen(req, job),
+    ].join('\n'),
+  });
+}
+
+// The browser sends the file name URI-encoded in X-Filename.
+function songFile(job) {
+  try { return decodeURIComponent(job.audioName || '') || 'unknown'; } catch { return job.audioName; }
+}
+
+function whereAndWhen(req, job) {
+  const country = String(req.headers['cf-ipcountry'] || '').slice(0, 8);
+  return [
+    `Country: ${country || 'unknown'}`,
+    `Time: ${new Date().toISOString()}`,
+    `Job: ${job.id}`,
+  ];
+}
+
+function formatSeconds(total) {
+  const s = Math.round(total);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 /* --------------------------------- start --------------------------------- */

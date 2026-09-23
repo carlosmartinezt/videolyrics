@@ -10,7 +10,6 @@ aligner/
 server/
 ops/
 deploy/
-supabase/
 data/
 scripts/warm-models.py
 Dockerfile

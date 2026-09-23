@@ -16,21 +16,9 @@ import type { Job, Plan, DirectorInfo, Prefs, ServerConfig } from './types';
  */
 const BASE = `${import.meta.env.VITE_API_BASE ?? ''}/api`;
 
-/**
- * Two credentials travel to the API and they mean different things.
- * `Authorization: Bearer` is the Supabase session — who you are. `X-Job-Token`
- * is a capability for one job — what you may touch. Sharing a header between
- * them would make /unlock impossible to express.
- */
-let accessToken: string | null = null;
-
-export function setAccessToken(token: string | null): void {
-  accessToken = token;
-}
-
+/** `X-Job-Token` is a capability for one job: what you may touch. */
 function headers(jobToken?: string, extra: Record<string, string> = {}): Record<string, string> {
   const out: Record<string, string> = { ...extra };
-  if (accessToken) out.authorization = `Bearer ${accessToken}`;
   if (jobToken) out['x-job-token'] = jobToken;
   return out;
 }
@@ -73,25 +61,6 @@ export function createJob(lyrics: string, prefs: Prefs): Promise<CreatedJob> {
   });
 }
 
-export interface Account {
-  ok: boolean;
-  email: string | null;
-  remaining: number;
-  per_period: number;
-  resets_at: string | null;
-  unlocked: number;
-}
-
-export function getMe(): Promise<{ user: { id: string; email: string | null }; account: Account }> {
-  return request('/me', { headers: headers() });
-}
-
-export function unlockJob(id: string, jobToken: string): Promise<{
-  ok: boolean; already: boolean; remaining: number; resetsAt: string | null;
-}> {
-  return request(`/jobs/${id}/unlock`, { method: 'POST', headers: headers(jobToken) });
-}
-
 export function getJob(id: string, jobToken: string, full = false): Promise<Job> {
   return request<Job>(`/jobs/${id}${full ? '?full=1' : ''}`, { headers: headers(jobToken) });
 }
@@ -112,7 +81,6 @@ export function uploadAudio(
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', `${BASE}/jobs/${id}/audio`);
     xhr.setRequestHeader('x-job-token', token);
-    if (accessToken) xhr.setRequestHeader('authorization', `Bearer ${accessToken}`);
     xhr.setRequestHeader('x-filename', encodeURIComponent(file.name).slice(0, 120));
     xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
 
@@ -133,11 +101,32 @@ export function uploadAudio(
   });
 }
 
-export function startJob(id: string, token: string): Promise<{ job: Job }> {
+export function startJob(id: string, token: string, durationSeconds?: number): Promise<{ job: Job }> {
   return request<{ job: Job }>(`/jobs/${id}/start`, {
     method: 'POST',
-    headers: headers(token),
+    headers: headers(token, { 'content-type': 'application/json' }),
+    body: JSON.stringify({ durationSeconds }),
   });
+}
+
+export interface DownloadInfo {
+  format: string;
+  aspect: string;
+  width: number;
+  height: number;
+  seconds: number;
+}
+
+/**
+ * Tell the server a video was saved, so the owner gets an email. Fire and
+ * forget: a failure here must never reach the person who just exported.
+ */
+export function reportDownload(id: string, token: string, info: DownloadInfo): void {
+  request(`/jobs/${id}/downloaded`, {
+    method: 'POST',
+    headers: headers(token, { 'content-type': 'application/json' }),
+    body: JSON.stringify(info),
+  }).catch(() => {});
 }
 
 export function redirectJob(
