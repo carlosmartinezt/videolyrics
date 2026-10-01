@@ -12,7 +12,7 @@
 #
 # Logs:  journalctl --user -u videolyrics-api -f
 #
-# Credentials live in /home/carlos/data/secrets/videolyrics.env, chmod 600:
+# Credentials live in /home/carlos/data/videolyrics/.env, chmod 600:
 # the art-director model key and the Resend key for email alerts. Without
 # them the app still aligns, designs and exports; it just sends no email and
 # the design is rule-based. That file is the only copy.
@@ -45,8 +45,10 @@ Environment=PORT=3058
 Environment=FFMPEG_BIN=/home/carlos/bin/ffmpeg
 Environment=FFPROBE_BIN=/home/carlos/bin/ffprobe
 
-# Three absolute paths into ~/data/videolyrics, because a release replaces
-# the working directory wholesale and none of these should go with it:
+# Three absolute paths, because a release replaces the working directory
+# wholesale and none of these should go with it. The first two are in
+# ~/bin/videolyrics-aligner, downloaded and rebuildable, so not backed up. The
+# third is in ~/data/videolyrics, which is.
 #
 #   .venv    1.2 GB of torch. Rebuildable, but not per deploy, and copying it
 #            each release would need 2.4 GB free for the .old alongside it.
@@ -57,8 +59,8 @@ Environment=FFPROBE_BIN=/home/carlos/bin/ffprobe
 #
 # server/aligner.mjs and server/jobs.mjs default all three to paths relative to
 # the code, which is right for `npm run dev` and wrong here, so they are set.
-Environment=ALIGNER_PYTHON=/home/carlos/data/videolyrics/aligner/.venv/bin/python
-Environment=TORCH_HOME=/home/carlos/data/videolyrics/aligner/.torch
+Environment=ALIGNER_PYTHON=/home/carlos/bin/videolyrics-aligner/.venv/bin/python
+Environment=TORCH_HOME=/home/carlos/bin/videolyrics-aligner/.torch
 Environment=DATA_DIR=/home/carlos/data/videolyrics/jobs
 
 # Two cores, shared with five other services. One alignment at a time, and
@@ -71,7 +73,7 @@ Environment=MKL_NUM_THREADS=2
 # preference and no model output can switch it off.
 Environment=WATERMARK_TEXT=videolyrics.org
 
-EnvironmentFile=-/home/carlos/data/secrets/videolyrics.env
+EnvironmentFile=-/home/carlos/data/videolyrics/.env
 
 NoNewPrivileges=true
 PrivateTmp=true

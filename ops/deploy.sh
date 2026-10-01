@@ -2,18 +2,22 @@
 #
 # Deploy videolyrics.
 #
-# Two things get published, both into $PUBLIC_ROOT, both as a staged swap:
+# One thing gets published, into $PUBLIC_ROOT as a staged swap:
 #
-#   videolyrics-api/   what this box actually serves. server/, shared/ and the
-#                      aligner's Python. The systemd unit runs from here.
-#   videolyrics/       the front end. Dormant: Vercel serves www.videolyrics.org
-#                      and the Caddy block pointing here is a fallback. Kept
-#                      fresh so the fallback is not a year-old build.
+#   videolyrics-api/   server/, shared/ and the aligner's Python. The systemd
+#                      unit runs from here.
+#
+# The front end is not published here: Vercel serves www.videolyrics.org, and
+# its deploy is `vercel deploy --prod` from this repo.
 #
 # Nothing runs out of this repo, so it can live anywhere and be deleted after.
-# The pieces a release must not replace are in $VIDEOLYRICS_RUNTIME, default
-# ~/data/videolyrics: the jobs in flight, the aligner venv and the model
-# cache. Secrets are in ~/data/secrets/videolyrics.env.
+# Two things a release must not replace live outside it:
+#
+#   $VIDEOLYRICS_ALIGNER, default ~/bin/videolyrics-aligner: the aligner venv
+#     and the model cache. Downloaded and rebuildable, so not backed up.
+#   $VIDEOLYRICS_RUNTIME, default ~/data/videolyrics: the jobs in flight.
+#
+# Secrets are in ~/data/videolyrics/.env.
 #
 # Neither step needs sudo.
 #
@@ -62,10 +66,10 @@ RUN_TESTS=1
 [[ "${1:-}" == "--no-test" ]] && RUN_TESTS=0
 
 API_DIR="$PUBLIC_ROOT/videolyrics-api"
-WEB_DIR="$PUBLIC_ROOT/videolyrics"
 RUNTIME="${VIDEOLYRICS_RUNTIME:-$HOME/data/videolyrics}"
-ENV_FILE="$HOME/data/secrets/videolyrics.env"
-PYTHON="$RUNTIME/aligner/.venv/bin/python"
+ENV_FILE="$HOME/data/videolyrics/.env"
+ALIGNER="${VIDEOLYRICS_ALIGNER:-$HOME/bin/videolyrics-aligner}"
+PYTHON="$ALIGNER/.venv/bin/python"
 
 step "Checking prerequisites"
 for binary in node npm; do
@@ -73,7 +77,7 @@ for binary in node npm; do
 done
 [[ -x "$PYTHON" ]] || {
   red "aligner venv missing at $PYTHON — run:
-    uv venv --python 3.12 $RUNTIME/aligner/.venv && \\
+    uv venv --python 3.12 $ALIGNER/.venv && \\
     uv pip install --python $PYTHON --index-strategy unsafe-best-match \\
     --extra-index-url https://download.pytorch.org/whl/cpu -r aligner/requirements.txt"
   exit 1
@@ -127,7 +131,7 @@ step "Publishing the API"
 #
 # The aligner's .py files come too, because server/aligner.mjs finds align.py
 # relative to itself. What does not come is the venv, the model cache and the
-# jobs: they live in $RUNTIME, pinned by absolute path in the unit instead.
+# jobs: they live in $ALIGNER and $RUNTIME, pinned by absolute path in the unit instead.
 rm -rf "$API_DIR.new"
 mkdir -p "$API_DIR.new"
 cp -a server shared package.json package-lock.json "$API_DIR.new/"
@@ -139,23 +143,10 @@ rm -rf "$API_DIR.old"
 mv "$API_DIR.new" "$API_DIR"
 green "published to $API_DIR"
 
-step "Building the front end"
-npx vite build
-
-# dist/ is build scratch inside the source tree. Vercel serves the real front
-# end; this publish keeps the dormant Caddy fallback current.
-rm -rf "$WEB_DIR.new"
-mkdir -p "$WEB_DIR.new"
-cp -a dist/. "$WEB_DIR.new/"
-rm -rf "$WEB_DIR.old"
-[[ -d "$WEB_DIR" ]] && mv "$WEB_DIR" "$WEB_DIR.old"
-mv "$WEB_DIR.new" "$WEB_DIR"
-green "published to $WEB_DIR"
-
 step "Warming the acoustic models"
 # Downloads on first use would otherwise land inside somebody's first job and
 # look like a two-minute stall.
-FFMPEG_BIN="$FFMPEG" TORCH_HOME="$RUNTIME/aligner/.torch" \
+FFMPEG_BIN="$FFMPEG" TORCH_HOME="$ALIGNER/.torch" \
   "$PYTHON" scripts/warm-models.py
 
 step "Restarting the API"
@@ -190,9 +181,8 @@ done
 
 if [[ -n "$API" ]]; then
   green "$API is live"
-  rm -rf "$API_DIR.old" "$WEB_DIR.old"
+  rm -rf "$API_DIR.old"
 else
-  rm -rf "$WEB_DIR.old"
   printf '\n\033[33mNot reachable from outside.\033[0m Local health passed, so this is DNS,\n'
   printf 'Cloudflare or Caddy rather than the build. Keeping %s.old for now.\n' "$API_DIR"
   printf '  1. Cloudflare: an A record for api.videolyrics.org -> 5.161.231.48\n'
