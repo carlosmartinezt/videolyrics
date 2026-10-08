@@ -4,20 +4,103 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Video Lyrics: turn a song into a lyric video</title>
-    <meta name="description" content="Upload an mp3, paste the lyrics, and get a finished lyric video. The words are matched to the vocal automatically." />
+    <meta name="description" content="Upload a song, paste the lyrics, get a finished lyric video with every word timed to the vocal. Leave your email to hear when it opens." />
     <meta name="color-scheme" content="dark" />
     <link rel="stylesheet" href="/fonts/fonts.css" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-
-    <!--
-      Google Analytics. Only the loader is here; the configuration is in
-      src/lib/analytics.ts so that script-src does not need 'unsafe-inline'
-      on a page that handles uploads.
-    -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-R2T77DXX6B"></script>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <header class="top">
+      <a class="brand" href="/"><img src="/icon.svg" alt="" width="28" height="28" />videolyrics</a>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="kicker">Lyric videos, made from the song itself</p>
+        <h1>Your song.<br /><span>Every word on the beat.</span></h1>
+        <p class="lede">
+          Upload a song and paste the lyrics. Video Lyrics listens to the vocal, works out
+          when each word is sung, and designs a video around the music: colours, type and
+          motion that change with every verse and chorus.
+        </p>
+
+        <form class="signup" id="signup" novalidate>
+          <label class="sr" for="email">Email address</label>
+          <input id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required />
+          <!-- Left empty by people, filled in by bots. -->
+          <input class="trap" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <button type="submit">Tell me when it opens</button>
+          <p class="note" id="signup-note" role="status">One email when it opens. Nothing else, and never shared. <a href="/privacy.html">Privacy</a></p>
+        </form>
+      </section>
+
+      <section class="videos" aria-labelledby="videos-title">
+        <h2 id="videos-title">Made with Video Lyrics</h2>
+        <div class="video-grid">
+          <figure>
+            <div class="frame">
+              <iframe src="https://www.youtube-nocookie.com/embed/LYaVaCsUN-o" title="Winner" loading="lazy"
+                allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen
+                referrerpolicy="strict-origin-when-cross-origin"></iframe>
+            </div>
+            <figcaption>Winner</figcaption>
+          </figure>
+          <figure>
+            <div class="frame">
+              <iframe src="https://www.youtube-nocookie.com/embed/8DocP34aGNE" title="Over Indexing" loading="lazy"
+                allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen
+                referrerpolicy="strict-origin-when-cross-origin"></iframe>
+            </div>
+            <figcaption>Over Indexing</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="features" aria-labelledby="features-title">
+        <h2 id="features-title">What it does</h2>
+        <ul>
+          <li>
+            <h3>Words timed to the voice</h3>
+            <p>You already know the words, so it only has to find when each one is sung. A
+              buried vocal lands close, never on the wrong line.</p>
+          </li>
+          <li>
+            <h3>Designed from the music</h3>
+            <p>Tempo, key, loudness and the mood of the lyrics pick the look. Each section gets
+              its own treatment, and every chorus hits harder than the last.</p>
+          </li>
+          <li>
+            <h3>Six looks</h3>
+            <p>Neon, aurora, editorial, filmstrip, kinetic type and spectrum, each with its own
+              palettes and type, and lyrics that stay readable on all of them.</p>
+          </li>
+          <li>
+            <h3>A real MP4</h3>
+            <p>1080p H.264, made in your browser, with your song's audio copied in untouched.
+              Ready for YouTube, Instagram or TikTok.</p>
+          </li>
+          <li>
+            <h3>Any Latin-script language</h3>
+            <p>English, Spanish, Portuguese, French and more, accents included.</p>
+          </li>
+          <li>
+            <h3>Your song stays yours</h3>
+            <p>No account. The audio is deleted within hours and the finished video is never
+              uploaded anywhere.</p>
+          </li>
+        </ul>
+      </section>
+
+
+      <section class="closing">
+        <h2>Want it for your next release?</h2>
+        <a class="button" href="#email">Leave your email</a>
+      </section>
+    </main>
+
+    <footer>videolyrics.org · <a href="/privacy.html">Privacy</a></footer>
+
+    <script type="module" src="/src/splash.ts"></script>
   </body>
 </html>

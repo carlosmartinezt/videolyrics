@@ -3,122 +3,17 @@
 # Install with:  sudo ops/install-caddy-site.sh
 #
 # That script replaces the managed region in /etc/caddy/Caddyfile, validates
-# the result *before* touching the live file, and keeps a timestamped backup.
-# Editing by hand is possible but this file serves six sites, and a stray
-# brace takes all of them down at once.
+# the result before touching the live file, and keeps a timestamped backup.
 #
-# videolyrics.org is canonical because that is what is burned into every
-# exported frame. www and the old subdomain redirect to it, so there is one
-# origin.
-#
-# The two videolyrics.org hosts use an explicit Cloudflare Origin CA
-# certificate; videolyrics.carlosmartinezt.com still uses automatic Let's
-# Encrypt. That asymmetry is deliberate, not drift. Cloudflare's edge answers
-# every http:// request on the videolyrics.org zone with a 301 before it
-# reaches this server — including /.well-known/acme-challenge/ — so HTTP-01
-# validation can never complete, and TLS-ALPN-01 cannot either, because
-# Cloudflare terminates TLS at the edge. Automatic certificates are therefore
-# impossible for that zone while it is proxied, and the symptom is a
-# Cloudflare 525 that looks like a server fault but is not one.
-#
-# Install the certificate with:  sudo ops/install-origin-cert.sh <cert> <key>
-# Removing the proxy from that zone would make this stop being the right
-# answer; see the header of that script.
+# videolyrics.org is a splash page on Vercel and nothing of it runs on this
+# box. The alignment API that api.videolyrics.org served is switched off; its
+# source is the `full-app` tag. Only the original address is left here, as a
+# redirect.
 
 # >>> videolyrics (managed by ops/install-caddy-site.sh) >>>
 
-videolyrics.org {
-    tls /etc/caddy/origin-certs/videolyrics.crt /etc/caddy/origin-certs/videolyrics.key
-
-    encode gzip zstd
-
-    handle /api/* {
-        reverse_proxy 127.0.0.1:3058 {
-            # Alignment takes minutes on this box and progress arrives over
-            # SSE. Both need Caddy to stop buffering and stop timing out.
-            flush_interval -1
-            transport http {
-                read_timeout 30m
-                write_timeout 30m
-            }
-        }
-    }
-
-    handle {
-        root * /home/carlos/public/videolyrics
-
-        # Fonts are self-hosted. The page reaches exactly two places: here
-        # for /api, and Google Analytics. blob: is
-        # required because the finished MP4 is handed to the page as a blob
-        # URL, and worker-src blob: because the media toolkit spawns workers.
-        #
-        # Note there is no 'unsafe-inline' in script-src: the GA snippet's
-        # configuration lives in the bundle rather than an inline block, so
-        # this page keeps a policy that would actually stop an injection.
-        header {
-            Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob: https://www.googletagmanager.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://*.google-analytics.com https://*.googletagmanager.com; media-src 'self' blob:; connect-src 'self' blob: https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
-            Referrer-Policy "strict-origin-when-cross-origin"
-            X-Content-Type-Options "nosniff"
-            Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
-            -Server
-        }
-
-        # Hashed assets are immutable; the shell must never be cached or a
-        # deploy would leave people on the previous build.
-        @assets path /assets/* /fonts/*
-        header @assets Cache-Control "public, max-age=31536000, immutable"
-        header /index.html Cache-Control "no-cache"
-
-        try_files {path} /index.html
-        file_server
-    }
-}
-
-# The API on a host of its own.
-#
-# This exists so the front end can be served from somewhere that is not this
-# box — Vercel — while alignment stays here. It is additive: videolyrics.org
-# above still serves both halves, so this changes nothing until a build is
-# made with VITE_API_BASE pointing at it.
-#
-# The reverse_proxy block is character-for-character the one above, for the
-# same reason: alignment takes minutes and progress arrives over SSE, so Caddy
-# must neither buffer nor time out.
-#
-# The origin certificate must cover this name. A Cloudflare Origin CA cert
-# issued for videolyrics.org alone will not — check its SANs for
-# *.videolyrics.org and reissue if it is missing, or the symptom is a
-# Cloudflare 526 that looks like the API is down.
-api.videolyrics.org {
-    tls /etc/caddy/origin-certs/videolyrics.crt /etc/caddy/origin-certs/videolyrics.key
-
-    encode gzip zstd
-
-    handle /api/* {
-        reverse_proxy 127.0.0.1:3058 {
-            flush_interval -1
-            transport http {
-                read_timeout 30m
-                write_timeout 30m
-            }
-        }
-    }
-
-    # Nothing else is served here. No dist/, no redirect to the front end: a
-    # stray link to this host should look broken, not half-work.
-    handle {
-        respond "Not found." 404
-    }
-}
-
-www.videolyrics.org {
-    tls /etc/caddy/origin-certs/videolyrics.crt /etc/caddy/origin-certs/videolyrics.key
-
-    redir https://videolyrics.org{uri} permanent
-}
-
 # The original address. Kept alive as a redirect rather than deleted, because
-# it is in a git history, a systemd unit comment and at least one screenshot.
+# it is in a git history and at least one screenshot.
 videolyrics.carlosmartinezt.com {
     redir https://videolyrics.org{uri} permanent
 }

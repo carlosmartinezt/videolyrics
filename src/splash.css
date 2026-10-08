@@ -1,0 +1,101 @@
+:root {
+  color-scheme: dark;
+  --ink: #0a0b0d;
+  --panel: #14171c;
+  --line: #262b34;
+  --text: #e9ebf0;
+  --text-2: #a8adb9;
+  --muted: #767c8a;
+  --accent: #7c8cff;
+  --accent-2: #b07cff;
+  --ok: #58d09a;
+  --bad: #ff6a5e;
+  --display: "Anton", Impact, sans-serif;
+  --ui: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  --pad: clamp(18px, 4vw, 40px);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(60rem 40rem at 15% -10%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 70%),
+    radial-gradient(50rem 30rem at 100% 10%, color-mix(in oklab, var(--accent-2) 14%, transparent), transparent 70%),
+    var(--ink);
+  color: var(--text);
+  font: 17px/1.55 var(--ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+main { max-width: 1120px; margin: 0 auto; padding: 0 var(--pad); }
+
+.top { max-width: 1120px; margin: 0 auto; padding: 22px var(--pad); }
+.brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  color: var(--text); text-decoration: none; font-weight: 600; letter-spacing: 0.01em;
+}
+
+.hero { padding: clamp(40px, 9vw, 110px) 0 clamp(48px, 8vw, 90px); max-width: 780px; }
+.kicker {
+  margin: 0 0 18px; color: var(--accent);
+  font-size: 13px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+}
+h1 {
+  margin: 0; font: 400 clamp(52px, 9vw, 104px)/0.95 var(--display);
+  letter-spacing: 0.005em; text-transform: uppercase;
+}
+h1 span {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.lede { margin: 26px 0 34px; max-width: 620px; color: var(--text-2); font-size: clamp(17px, 2vw, 20px); }
+
+.signup { display: flex; flex-wrap: wrap; gap: 10px; max-width: 560px; }
+.signup input[type="email"] {
+  flex: 1 1 260px; min-width: 0; padding: 15px 16px;
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px; font: inherit;
+}
+.signup input[type="email"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+button, .button {
+  padding: 15px 22px; border: 0; border-radius: 10px; cursor: pointer;
+  background: var(--accent); color: var(--ink);
+  font: 600 16px/1.2 var(--ui); text-decoration: none; display: inline-block;
+}
+button:hover, .button:hover { filter: brightness(1.08); }
+button:disabled { opacity: 0.6; cursor: wait; }
+.note { flex-basis: 100%; margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.note[data-state="ok"] { color: var(--ok); }
+.note[data-state="bad"] { color: var(--bad); }
+.trap { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+h2 { margin: 0 0 24px; font: 400 clamp(30px, 4.5vw, 44px)/1 var(--display); text-transform: uppercase; }
+
+.videos { padding: 20px 0 70px; }
+.video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; }
+.video-grid figure { margin: 0; }
+.frame {
+  position: relative; aspect-ratio: 16 / 9; overflow: hidden;
+  border-radius: 14px; border: 1px solid var(--line); background: #000;
+  box-shadow: 0 20px 50px -20px color-mix(in oklab, var(--accent) 45%, transparent);
+}
+.frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+figcaption { margin-top: 10px; color: var(--text-2); font-weight: 600; }
+
+.features { padding: 30px 0 60px; }
+.features ul {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;
+}
+.features li { padding: 22px; background: color-mix(in oklab, var(--panel) 85%, transparent); border: 1px solid var(--line); border-radius: 14px; }
+.features h3 { margin: 0 0 8px; font-size: 18px; }
+.features p { margin: 0; color: var(--text-2); font-size: 15.5px; }
+
+
+.closing { text-align: center; padding: 40px 0 90px; }
+
+footer { padding: 26px var(--pad); text-align: center; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); }
+
+footer a, .note a { color: inherit; }

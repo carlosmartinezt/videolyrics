@@ -7,10 +7,17 @@ alignment — a CTC acoustic model constrained to the lyrics you pasted — then
 designs the video from what it heard and what the words say, and lets your
 browser encode the MP4.
 
-Free for anyone: no sign-up, no account, no limit on downloads. The only cap
-is 5 songs per hour per IP, because alignment is the one expensive thing here.
+## Status: a splash page
 
-Live at **https://videolyrics.org**
+videolyrics.org is now a splash page (`index.html`, `src/splash.ts`) with an
+email form. `api/subscribe.js` is a Vercel function that emails each address
+to the owner through Resend; it needs `RESEND_API_KEY` in the Vercel project.
+Deploy with `vercel deploy --prod`.
+
+The app is all still here, but nothing runs it: its page is `app.html`, which
+the build leaves out, and the alignment API is switched off. The last commit
+where all of it was live is the `full-app` tag. To bring it back, check that
+out and follow the rest of this README.
 
 ---
 
